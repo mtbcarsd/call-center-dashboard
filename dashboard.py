@@ -258,26 +258,14 @@ with tab_team:
     st.markdown("### 👥 Команда разработчиков")
     st.markdown("---")
     team = [
-        {"name": "Масловская Ксения", "role": "Team Lead", "icon": "👑"},
+        {"name": "Масловская Ксения", "role": "Team Lead",      "icon": "👑"},
         {"name": "Дымков Алексей",    "role": "Data Scientist", "icon": "🔬"},
         {"name": "Шилкин Андрей",     "role": "Data Scientist", "icon": "🔬"},
     ]
-    cols = st.columns(3)
-    for col, member in zip(cols, team):
+    c1, c2, c3 = st.columns(3)
+    for col, member in zip([c1, c2, c3], team):
         with col:
-            st.markdown(
-                f"""
-                <div style="
-                    border: 1px solid #e0e0e0;
-                    border-radius: 12px;
-                    padding: 28px 20px;
-                    text-align: center;
-                    background: #f8f9fa;
-                ">
-                    <div style="font-size: 48px">{member['icon']}</div>
-                    <div style="font-size: 18px; font-weight: 600; margin-top: 12px">{member['name']}</div>
-                    <div style="color: #666; margin-top: 6px">{member['role']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"## {member['icon']}")
+                st.markdown(f"**{member['name']}**")
+                st.caption(member["role"])
