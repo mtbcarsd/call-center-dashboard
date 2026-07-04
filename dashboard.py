@@ -4,6 +4,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
+import os
+from dotenv import load_dotenv
+load_dotenv()  # загружает .env локально, игнорируется если файла нет
 
 st.set_page_config(
     page_title="Call Center Analytics",
@@ -12,33 +15,17 @@ st.set_page_config(
 )
 
 # ── Подключение к Snowflake ────────────────────────────────────────────────────
-def _sf_config():
-    try:
-        if "snowflake" in st.secrets:
-            s = st.secrets["snowflake"]
-            return dict(
-                account=s["account"], user=s["user"], password=s["password"],
-                role=s.get("role", "ACCOUNTADMIN"),
-                warehouse=s.get("warehouse", "CCA_WH"),
-                database=s.get("database", "CALL_CENTER_DB"),
-                schema=s.get("schema", "ANALYTICS"),
-            )
-    except Exception:
-        pass
-    import os
-    return dict(
-        account=os.environ["SF_ACCOUNT"],
-        user=os.environ["SF_USER"],
-        password=os.environ["SF_PASSWORD"],
+@st.cache_resource
+def get_connection():
+    return snowflake.connector.connect(
+        account=os.environ.get("SF_ACCOUNT", "vwxavxk-uq47134"),
+        user=os.environ.get("SF_USER", "DYMSIA"),
+        password=os.environ.get("SF_PASSWORD", "Leha31Jeka04Leha31Jeka04"),
         role=os.environ.get("SF_ROLE", "ACCOUNTADMIN"),
         warehouse=os.environ.get("SF_WAREHOUSE", "CCA_WH"),
         database=os.environ.get("SF_DATABASE", "CALL_CENTER_DB"),
         schema=os.environ.get("SF_SCHEMA", "ANALYTICS"),
     )
-
-@st.cache_resource
-def get_connection():
-    return snowflake.connector.connect(**_sf_config())
 
 @st.cache_data(ttl=60)
 def load_data():
