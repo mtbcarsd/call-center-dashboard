@@ -5,14 +5,52 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import os
+import hashlib
 from dotenv import load_dotenv
-load_dotenv()  # загружает .env локально, игнорируется если файла нет
+load_dotenv()
 
 st.set_page_config(
     page_title="Call Center Analytics",
     page_icon="📞",
     layout="wide",
 )
+
+# ── Аутентификация ─────────────────────────────────────────────────────────────
+USERS = {
+    "Julia": {
+        "password_hash": hashlib.sha256("Julia".encode()).hexdigest(),
+        "role": "admin",
+        "display_name": "Julia",
+    },
+}
+
+def check_login(username: str, password: str) -> bool:
+    user = USERS.get(username)
+    if not user:
+        return False
+    return user["password_hash"] == hashlib.sha256(password.encode()).hexdigest()
+
+def show_login():
+    col_c = st.columns([1, 1, 1])[1]
+    with col_c:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("## 📞 Call Center Analytics")
+        st.markdown("### Вход в систему")
+        username = st.text_input("Логин")
+        password = st.text_input("Пароль", type="password")
+        if st.button("Войти", use_container_width=True):
+            if check_login(username, password):
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username
+                st.session_state["role"] = USERS[username]["role"]
+                st.rerun()
+            else:
+                st.error("Неверный логин или пароль")
+
+if not st.session_state.get("authenticated"):
+    show_login()
+    st.stop()
+
 
 # ── Подключение к Snowflake ────────────────────────────────────────────────────
 @st.cache_resource
@@ -45,6 +83,12 @@ def load_data():
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.title("📞 Call Center Analytics")
+username = st.session_state.get("username", "")
+role = st.session_state.get("role", "")
+st.sidebar.markdown(f"👤 **{username}** · {role}")
+if st.sidebar.button("Выйти"):
+    st.session_state.clear()
+    st.rerun()
 st.sidebar.markdown("---")
 
 df_all = load_data()
