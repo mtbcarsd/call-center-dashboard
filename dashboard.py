@@ -257,8 +257,14 @@ with tab_analytics:
 with tab_team:
     st.markdown("### 👥 Команда разработчиков")
     st.markdown("---")
+    # Карточка организации
+    with st.container(border=True):
+        st.markdown("## 🏢  ЦАР · ds-team, ясли")
+        st.markdown("**МТБанк, Беларусь**")
+
+    st.markdown("#### Участники команды")
     team = [
-        {"name": "Масловская Ксения", "role": "Team Lead",      "icon": "👑"},
+        {"name": "Масловская Ксения", "role": "Data Scientist", "icon": "🔬"},
         {"name": "Дымков Алексей",    "role": "Data Scientist", "icon": "🔬"},
         {"name": "Шилкин Андрей",     "role": "Data Scientist", "icon": "🔬"},
     ]
