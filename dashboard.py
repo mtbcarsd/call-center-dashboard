@@ -259,8 +259,10 @@ with tab_team:
     st.markdown("---")
     # Карточка организации
     with st.container(border=True):
-        st.markdown("## 🏢  ЦАР · ds-team, ясли")
+        st.markdown("## 🏢  ЦАР · ds-team, sandbox")
         st.markdown("**МТБанк, Беларусь**")
+        st.markdown("👩‍🏫 **Воспитатель:** Пилипенко Светлана")
+        st.markdown("🤱 **Нянечка:** Гуринович Анастасия")
 
     st.markdown("#### Участники команды")
     team = [
