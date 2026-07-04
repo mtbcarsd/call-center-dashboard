@@ -106,6 +106,7 @@ st.sidebar.markdown("---")
 if st.sidebar.button("🔄 Обновить данные"):
     st.cache_data.clear()
     st.rerun()
+st.sidebar.caption("v1.4 · 2026-07-04")
 
 # ── Фильтрация ─────────────────────────────────────────────────────────────────
 df = df_all.copy()
