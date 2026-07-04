@@ -13,15 +13,18 @@ st.set_page_config(
 
 # ── Подключение к Snowflake ────────────────────────────────────────────────────
 def _sf_config():
-    if "snowflake" in st.secrets:
-        s = st.secrets["snowflake"]
-        return dict(
-            account=s["account"], user=s["user"], password=s["password"],
-            role=s.get("role", "ACCOUNTADMIN"),
-            warehouse=s.get("warehouse", "CCA_WH"),
-            database=s.get("database", "CALL_CENTER_DB"),
-            schema=s.get("schema", "ANALYTICS"),
-        )
+    try:
+        if "snowflake" in st.secrets:
+            s = st.secrets["snowflake"]
+            return dict(
+                account=s["account"], user=s["user"], password=s["password"],
+                role=s.get("role", "ACCOUNTADMIN"),
+                warehouse=s.get("warehouse", "CCA_WH"),
+                database=s.get("database", "CALL_CENTER_DB"),
+                schema=s.get("schema", "ANALYTICS"),
+            )
+    except Exception:
+        pass
     import os
     return dict(
         account=os.environ["SF_ACCOUNT"],
