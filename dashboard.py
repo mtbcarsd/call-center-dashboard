@@ -116,177 +116,168 @@ if selected_urgency != "Все":
 if selected_status != "Все":
     df = df[df["resolution_status"] == selected_status]
 
-# ── Заголовок ──────────────────────────────────────────────────────────────────
+# ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-st.caption(f"Snowflake: CALL_CENTER_DB.ANALYTICS · {len(df)} из {len(df_all)} звонков")
+tab_analytics, tab_team = st.tabs(["📊 Аналитика", "👥 Команда разработчиков"])
 
-# ── KPI карточки ──────────────────────────────────────────────────────────────
-st.markdown("### Ключевые показатели")
-k1, k2, k3, k4, k5 = st.columns(5)
+with tab_analytics:
+    st.caption(f"Snowflake: CALL_CENTER_DB.ANALYTICS · {len(df)} из {len(df_all)} звонков")
 
-avg_agent = df["agent_performance_score"].mean()
-avg_client = df["customer_satisfaction"].mean()
-resolved_pct = (df["resolution_status"] == "resolved").mean() * 100
-escalated = df["escalation_flag"].sum()
-total_dur = df_all.shape[0]  # всего обработано звонков
+    # ── KPI карточки ──────────────────────────────────────────────────────────
+    st.markdown("### Ключевые показатели")
+    k1, k2, k3, k4, k5 = st.columns(5)
+    avg_agent = df["agent_performance_score"].mean()
+    avg_client = df["customer_satisfaction"].mean()
+    resolved_pct = (df["resolution_status"] == "resolved").mean() * 100
+    escalated = df["escalation_flag"].sum()
+    k1.metric("Звонков", len(df), f"из {len(df_all)} всего")
+    k2.metric("Оценка оператора", f"{avg_agent:.1f}/10")
+    k3.metric("Удовл. клиента", f"{avg_client:.1f}/10")
+    k4.metric("Решено", f"{resolved_pct:.0f}%")
+    k5.metric("Эскалаций", int(escalated))
 
-k1.metric("Звонков", len(df), f"из {len(df_all)} всего")
-k2.metric("Оценка оператора", f"{avg_agent:.1f}/10")
-k3.metric("Удовл. клиента", f"{avg_client:.1f}/10")
-k4.metric("Решено", f"{resolved_pct:.0f}%")
-k5.metric("Эскалаций", int(escalated))
+    st.markdown("---")
 
-st.markdown("---")
+    # ── Графики ───────────────────────────────────────────────────────────────
+    col_left, col_mid, col_right = st.columns([2, 1.5, 1.5])
 
-# ── Графики ────────────────────────────────────────────────────────────────────
-col_left, col_mid, col_right = st.columns([2, 1.5, 1.5])
-
-with col_left:
-    st.markdown("#### Оценки по звонкам")
-    fig_scores = go.Figure()
-    fig_scores.add_trace(go.Bar(
-        name="Оператор",
-        x=df["call_topic"],
-        y=df["agent_performance_score"],
-        marker_color="#1f77b4",
-    ))
-    fig_scores.add_trace(go.Bar(
-        name="Клиент",
-        x=df["call_topic"],
-        y=df["customer_satisfaction"],
-        marker_color="#ff7f0e",
-    ))
-    fig_scores.update_layout(
-        barmode="group",
-        yaxis=dict(range=[0, 10], title="Оценка"),
-        xaxis_tickangle=-30,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        margin=dict(t=10, b=0),
-        height=300,
-    )
-    st.plotly_chart(fig_scores, use_container_width=True)
-
-with col_mid:
-    st.markdown("#### Срочность")
-    urgency_counts = df["urgency"].value_counts()
-    color_map = {"low": "#2ecc71", "medium": "#f39c12", "high": "#e74c3c"}
-    colors = [color_map.get(u, "#95a5a6") for u in urgency_counts.index]
-    fig_urg = px.pie(
-        values=urgency_counts.values,
-        names=urgency_counts.index,
-        color=urgency_counts.index,
-        color_discrete_map=color_map,
-        hole=0.45,
-    )
-    fig_urg.update_layout(
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2),
-        margin=dict(t=10, b=0),
-        height=300,
-    )
-    st.plotly_chart(fig_urg, use_container_width=True)
-
-with col_right:
-    st.markdown("#### По отделам")
-    dept_stats = df_all.groupby("department").agg(
-        звонков=("call_topic", "count"),
-        оператор=("agent_performance_score", "mean"),
-        клиент=("customer_satisfaction", "mean"),
-    ).round(1).reset_index()
-    dept_stats.columns = ["Отдел", "Звонков", "Оператор", "Клиент"]
-    st.dataframe(dept_stats, use_container_width=True, hide_index=True)
-
-    if len(df_all["department"].unique()) > 1:
-        fig_dept = px.bar(
-            dept_stats,
-            x="Отдел",
-            y=["Оператор", "Клиент"],
-            barmode="group",
-            color_discrete_sequence=["#1f77b4", "#ff7f0e"],
+    with col_left:
+        st.markdown("#### Оценки по звонкам")
+        fig_scores = go.Figure()
+        fig_scores.add_trace(go.Bar(
+            name="Оператор", x=df["call_topic"],
+            y=df["agent_performance_score"], marker_color="#1f77b4",
+        ))
+        fig_scores.add_trace(go.Bar(
+            name="Клиент", x=df["call_topic"],
+            y=df["customer_satisfaction"], marker_color="#ff7f0e",
+        ))
+        fig_scores.update_layout(
+            barmode="group", yaxis=dict(range=[0, 10], title="Оценка"),
+            xaxis_tickangle=-30, legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            margin=dict(t=10, b=0), height=300,
         )
-        fig_dept.update_layout(
-            yaxis=dict(range=[0, 10]),
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
-            margin=dict(t=10, b=0),
-            height=200,
+        st.plotly_chart(fig_scores, use_container_width=True)
+
+    with col_mid:
+        st.markdown("#### Срочность")
+        urgency_counts = df["urgency"].value_counts()
+        color_map = {"low": "#2ecc71", "medium": "#f39c12", "high": "#e74c3c"}
+        fig_urg = px.pie(
+            values=urgency_counts.values, names=urgency_counts.index,
+            color=urgency_counts.index, color_discrete_map=color_map, hole=0.45,
         )
-        st.plotly_chart(fig_dept, use_container_width=True)
+        fig_urg.update_layout(
+            showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2),
+            margin=dict(t=10, b=0), height=300,
+        )
+        st.plotly_chart(fig_urg, use_container_width=True)
 
-st.markdown("---")
+    with col_right:
+        st.markdown("#### По отделам")
+        dept_stats = df_all.groupby("department").agg(
+            звонков=("call_topic", "count"),
+            оператор=("agent_performance_score", "mean"),
+            клиент=("customer_satisfaction", "mean"),
+        ).round(1).reset_index()
+        dept_stats.columns = ["Отдел", "Звонков", "Оператор", "Клиент"]
+        st.dataframe(dept_stats, use_container_width=True, hide_index=True)
+        if len(df_all["department"].unique()) > 1:
+            fig_dept = px.bar(
+                dept_stats, x="Отдел", y=["Оператор", "Клиент"],
+                barmode="group", color_discrete_sequence=["#1f77b4", "#ff7f0e"],
+            )
+            fig_dept.update_layout(
+                yaxis=dict(range=[0, 10]), showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                margin=dict(t=10, b=0), height=200,
+            )
+            st.plotly_chart(fig_dept, use_container_width=True)
 
-# ── Таблица звонков ────────────────────────────────────────────────────────────
-st.markdown("### Все звонки")
+    st.markdown("---")
 
-display_df = df[[
-    "department", "call_topic", "call_type", "urgency",
-    "resolution_status", "agent_performance_score", "customer_satisfaction",
-    "escalation_flag"
-]].copy()
-display_df.columns = [
-    "Отдел", "Тема", "Тип", "Срочность",
-    "Статус", "Оператор", "Клиент", "Эскалация"
-]
-
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Оператор": st.column_config.ProgressColumn(
-            "Оператор", min_value=0, max_value=10, format="%d/10"
-        ),
-        "Клиент": st.column_config.ProgressColumn(
-            "Клиент", min_value=0, max_value=10, format="%d/10"
-        ),
-        "Эскалация": st.column_config.CheckboxColumn("Эскалация"),
-    },
-)
-
-# ── Детальный просмотр звонка ──────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Детали звонка")
-
-topic_options = df["call_topic"].tolist()
-if not topic_options:
-    st.info("Нет данных по выбранным фильтрам.")
-else:
-    selected_topic = st.selectbox(
-        "Выберите звонок",
-        options=topic_options,
-        format_func=lambda t: f"{df[df['call_topic']==t]['department'].values[0]} — {t}",
+    # ── Таблица звонков ───────────────────────────────────────────────────────
+    st.markdown("### Все звонки")
+    display_df = df[[
+        "department", "call_topic", "call_type", "urgency",
+        "resolution_status", "agent_performance_score", "customer_satisfaction",
+        "escalation_flag"
+    ]].copy()
+    display_df.columns = ["Отдел", "Тема", "Тип", "Срочность", "Статус", "Оператор", "Клиент", "Эскалация"]
+    st.dataframe(
+        display_df, use_container_width=True, hide_index=True,
+        column_config={
+            "Оператор": st.column_config.ProgressColumn("Оператор", min_value=0, max_value=10, format="%d/10"),
+            "Клиент": st.column_config.ProgressColumn("Клиент", min_value=0, max_value=10, format="%d/10"),
+            "Эскалация": st.column_config.CheckboxColumn("Эскалация"),
+        },
     )
 
-    row = df[df["call_topic"] == selected_topic].iloc[0]
+    # ── Детальный просмотр звонка ─────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Детали звонка")
+    topic_options = df["call_topic"].tolist()
+    if not topic_options:
+        st.info("Нет данных по выбранным фильтрам.")
+    else:
+        selected_topic = st.selectbox(
+            "Выберите звонок", options=topic_options,
+            format_func=lambda t: f"{df[df['call_topic']==t]['department'].values[0]} — {t}",
+        )
+        row = df[df["call_topic"] == selected_topic].iloc[0]
+        d1, d2 = st.columns([1, 2])
+        with d1:
+            st.markdown("**Параметры звонка**")
+            st.markdown(f"- **Отдел:** {row['department']}")
+            st.markdown(f"- **Тип:** {row['call_type']}")
+            st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
+            st.markdown(f"- **Срочность:** {row['urgency']}")
+            st.markdown(f"- **Статус:** {row['resolution_status']}")
+            st.markdown(f"- **Оценка оператора:** {row['agent_performance_score']}/10")
+            st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
+            st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
+            topics = row["key_topics"]
+            if topics:
+                try:
+                    topics_list = json.loads(topics) if isinstance(topics, str) else topics
+                    if topics_list:
+                        st.markdown("**Ключевые темы:**")
+                        for t in topics_list:
+                            st.markdown(f"  - {t}")
+                except Exception:
+                    pass
+        with d2:
+            if row["call_summary"]:
+                st.markdown("**Резюме**")
+                st.info(row["call_summary"])
+            with st.expander("📄 Транскрипт звонка", expanded=False):
+                st.text(row["transcript_text"])
 
-    d1, d2 = st.columns([1, 2])
-
-    with d1:
-        st.markdown("**Параметры звонка**")
-        st.markdown(f"- **Отдел:** {row['department']}")
-        st.markdown(f"- **Тип:** {row['call_type']}")
-        st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
-        st.markdown(f"- **Срочность:** {row['urgency']}")
-        st.markdown(f"- **Статус:** {row['resolution_status']}")
-        st.markdown(f"- **Оценка оператора:** {row['agent_performance_score']}/10")
-        st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
-        st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
-
-        topics = row["key_topics"]
-        if topics:
-            try:
-                topics_list = json.loads(topics) if isinstance(topics, str) else topics
-                if topics_list:
-                    st.markdown("**Ключевые темы:**")
-                    for t in topics_list:
-                        st.markdown(f"  - {t}")
-            except Exception:
-                pass
-
-    with d2:
-        if row["call_summary"]:
-            st.markdown("**Резюме**")
-            st.info(row["call_summary"])
-
-        with st.expander("📄 Транскрипт звонка", expanded=False):
-            st.text(row["transcript_text"])
+# ── Вкладка команды ────────────────────────────────────────────────────────────
+with tab_team:
+    st.markdown("### 👥 Команда разработчиков")
+    st.markdown("---")
+    team = [
+        {"name": "Масловская Ксения", "role": "Team Lead", "icon": "👑"},
+        {"name": "Дымков Алексей",    "role": "Data Scientist", "icon": "🔬"},
+        {"name": "Шилкин Андрей",     "role": "Data Scientist", "icon": "🔬"},
+    ]
+    cols = st.columns(3)
+    for col, member in zip(cols, team):
+        with col:
+            st.markdown(
+                f"""
+                <div style="
+                    border: 1px solid #e0e0e0;
+                    border-radius: 12px;
+                    padding: 28px 20px;
+                    text-align: center;
+                    background: #f8f9fa;
+                ">
+                    <div style="font-size: 48px">{member['icon']}</div>
+                    <div style="font-size: 18px; font-weight: 600; margin-top: 12px">{member['name']}</div>
+                    <div style="color: #666; margin-top: 6px">{member['role']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
