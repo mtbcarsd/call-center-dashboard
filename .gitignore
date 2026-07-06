@@ -5,3 +5,5 @@ __pycache__/
 .streamlit/secrets.toml
 results_cache.json
 *.wav
+*.mp4
+.claude/settings.local.json
