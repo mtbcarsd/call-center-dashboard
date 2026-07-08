@@ -1,13 +1,11 @@
 import streamlit as st
-import snowflake.connector
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
-import os
 import hashlib
-from dotenv import load_dotenv
-load_dotenv()
+
+from db import get_connection
 
 st.set_page_config(
     page_title="Call Center Analytics",
@@ -52,19 +50,7 @@ if not st.session_state.get("authenticated"):
     st.stop()
 
 
-# ── Подключение к Snowflake ────────────────────────────────────────────────────
-@st.cache_resource
-def get_connection():
-    return snowflake.connector.connect(
-        account=os.environ.get("SF_ACCOUNT", "vwxavxk-uq47134"),
-        user=os.environ.get("SF_USER", "DYMSIA"),
-        password=os.environ.get("SF_PASSWORD", "Leha31Jeka04Leha31Jeka04"),
-        role=os.environ.get("SF_ROLE", "ACCOUNTADMIN"),
-        warehouse=os.environ.get("SF_WAREHOUSE", "CCA_WH"),
-        database=os.environ.get("SF_DATABASE", "CALL_CENTER_DB"),
-        schema=os.environ.get("SF_SCHEMA", "ANALYTICS"),
-    )
-
+# ── Подключение к локальной базе ──────────────────────────────────────────────
 @st.cache_data(ttl=60)
 def load_data():
     conn = get_connection()
@@ -75,10 +61,10 @@ def load_data():
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
             analyzed_at
-        FROM CALL_ANALYSIS
+        FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
-    df.columns = [c.lower() for c in df.columns]
+    conn.close()
     return df
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -122,7 +108,7 @@ st.title("📞 Аналитика колл-центра")
 tab_analytics, tab_team = st.tabs(["📊 Аналитика", "👥 Команда разработчиков"])
 
 with tab_analytics:
-    st.caption(f"Snowflake: CALL_CENTER_DB.ANALYTICS · {len(df)} из {len(df_all)} звонков")
+    st.caption(f"Локальная база: call_center.db · {len(df)} из {len(df_all)} звонков")
 
     # ── KPI карточки ──────────────────────────────────────────────────────────
     st.markdown("### Ключевые показатели")

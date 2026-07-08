@@ -4,6 +4,7 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 results_cache.json
+call_center.db
 *.wav
 *.mp4
 .claude/settings.local.json

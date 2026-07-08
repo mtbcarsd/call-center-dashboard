@@ -1,6 +1,6 @@
 """
 Call Center Analytics Pipeline
-Whisper (medium) → ollama (qwen2.5-coder:7b) → Snowflake
+Whisper (medium) → ollama (qwen2.5-coder:7b) → локальная SQLite-база
 """
 
 import os
@@ -8,23 +8,14 @@ import json
 import time
 import re
 import requests
-import snowflake.connector
 from faster_whisper import WhisperModel
 from datetime import datetime
+
+from db import get_connection
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 AUDIO_ROOT = "/home/dsneo/claude_projects/call_center_dashboard/audio_original_data"
 DEPT_MAP = {"ОО": "OO", "ОРККиП": "ORKKiP"}
-
-SNOWFLAKE = dict(
-    account="vwxavxk-uq47134",
-    user="DYMSIA",
-    password="Leha31Jeka04Leha31Jeka04",
-    role="ACCOUNTADMIN",
-    warehouse="CCA_WH",
-    database="CALL_CENTER_DB",
-    schema="ANALYTICS",
-)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen2.5-coder:7b"
@@ -145,14 +136,14 @@ def analyze_all(transcripts: list[dict]) -> list[dict]:
     return results
 
 
-# ── Шаг 3: Загрузка в Snowflake ───────────────────────────────────────────────
-def upload_to_snowflake(records: list[dict]):
-    conn = snowflake.connector.connect(**SNOWFLAKE)
+# ── Шаг 3: Загрузка в локальную SQLite-базу ───────────────────────────────────
+def upload_to_db(records: list[dict]):
+    conn = get_connection()
     cur = conn.cursor()
 
     # Очистить таблицы перед повторной загрузкой
-    cur.execute("TRUNCATE TABLE AI_TRANSCRIBED_CALLS")
-    cur.execute("TRUNCATE TABLE CALL_ANALYSIS")
+    cur.execute("DELETE FROM ai_transcribed_calls")
+    cur.execute("DELETE FROM call_analysis")
 
     transcription_rows = []
     analysis_rows = []
@@ -171,7 +162,7 @@ def upload_to_snowflake(records: list[dict]):
             r["call_topic"],
             r["transcript_text"],
             r.get("call_summary", ""),
-            None,  # sentiment_score (Cortex недоступен)
+            None,  # sentiment_score (не считается локальной моделью)
             r.get("urgency", ""),
             r.get("call_type", ""),
             r.get("customer_intent", ""),
@@ -179,30 +170,30 @@ def upload_to_snowflake(records: list[dict]):
             r.get("resolution_status", ""),
             r.get("agent_performance_score"),
             r.get("customer_satisfaction_score"),
-            r.get("escalation_flag", False),
+            int(bool(r.get("escalation_flag", False))),
             json.dumps(r.get("key_topics", []), ensure_ascii=False),
         ))
 
     cur.executemany(
-        """INSERT INTO AI_TRANSCRIBED_CALLS
+        """INSERT INTO ai_transcribed_calls
            (file_name, department, call_topic, transcript_text, detected_language, duration_sec)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
+           VALUES (?, ?, ?, ?, ?, ?)""",
         transcription_rows,
     )
     print(f"  Загружено транскриптов: {len(transcription_rows)}")
 
     cur.executemany(
-        """INSERT INTO CALL_ANALYSIS
+        """INSERT INTO call_analysis
            (file_name, department, call_topic, transcript_text, call_summary,
             sentiment_score, sentiment_label, call_type, customer_intent, urgency,
             resolution_status, agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         analysis_rows,
     )
     print(f"  Загружено аналитических записей: {len(analysis_rows)}")
 
-    cur.close()
+    conn.commit()
     conn.close()
 
 
@@ -230,31 +221,29 @@ def main():
         json.dump(records, f, ensure_ascii=False, indent=2)
     print(f"      Кэш сохранён: {cache_path}\n")
 
-    print("[3/3] Загрузка в Snowflake...")
-    upload_to_snowflake(records)
+    print("[3/3] Загрузка в локальную базу (call_center.db)...")
+    upload_to_db(records)
     print("      Готово\n")
 
     elapsed = (datetime.now() - start).seconds
     print(f"{'='*60}")
     print(f"Pipeline завершён за {elapsed//60}м {elapsed%60}с")
-    print(f"Таблицы: CALL_CENTER_DB.ANALYTICS.AI_TRANSCRIBED_CALLS")
-    print(f"         CALL_CENTER_DB.ANALYTICS.CALL_ANALYSIS")
+    print(f"База: call_center.db (таблицы ai_transcribed_calls, call_analysis)")
     print(f"{'='*60}\n")
 
-    # Быстрая проверка в Snowflake
-    conn = snowflake.connector.connect(**SNOWFLAKE)
+    # Быстрая проверка
+    conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT department, call_topic, urgency, resolution_status,
                agent_performance_score, customer_satisfaction
-        FROM CALL_ANALYSIS
+        FROM call_analysis
         ORDER BY department, call_topic
     """)
     print(f"{'Отдел':<10} {'Тема':<30} {'Срочность':<10} {'Статус':<12} {'Оператор':>9} {'Клиент':>7}")
     print("-" * 80)
     for row in cur.fetchall():
         print(f"{row[0]:<10} {row[1]:<30} {row[2]:<10} {row[3]:<12} {str(row[4]):>9} {str(row[5]):>7}")
-    cur.close()
     conn.close()
 
 
