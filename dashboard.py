@@ -285,16 +285,16 @@ with tab_team:
     st.markdown("---")
     # Карточка организации
     with st.container(border=True):
-        st.markdown("## 🏢  ЦАР · ds-team, sandbox")
+        st.markdown("## 🏢  ЦАР · ds-team prospects, (песочница)")
         st.markdown("**МТБанк, Беларусь**")
         st.markdown("👩‍🏫 **Воспитатель:** Пилипенко Светлана")
         st.markdown("🤱 **Нянечка:** Гуринович Анастасия")
 
     st.markdown("#### Участники команды")
     team = [
-        {"name": "Масловская Ксения", "role": "Data Scientist", "icon": "🔬"},
-        {"name": "Дымков Алексей",    "role": "Data Scientist", "icon": "🔬"},
-        {"name": "Шилкин Андрей",     "role": "Data Scientist", "icon": "🔬"},
+        {"name": "Ксения", "role": "Data Scientist", "icon": "🔬"},
+        {"name": "Алексей", "role": "Data Scientist", "icon": "🔬"},
+        {"name": "Андрей",  "role": "Data Scientist", "icon": "🔬"},
     ]
     c1, c2, c3 = st.columns(3)
     for col, member in zip([c1, c2, c3], team):
