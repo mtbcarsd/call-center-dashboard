@@ -102,3 +102,4 @@ streamlit run dashboard.py
 - 🔬 Data Scientist: Масловская Ксения
 - 🔬 Data Scientist: Дымков Алексей
 - 🔬 Data Scientist: Шилкин Андрей
+
