@@ -6,6 +6,7 @@ import json
 import hashlib
 
 from db import get_connection
+from checklist import CHECKLIST
 
 st.set_page_config(
     page_title="Call Center Analytics",
@@ -16,7 +17,7 @@ st.set_page_config(
 # ── Аутентификация ─────────────────────────────────────────────────────────────
 USERS = {
     "Julia": {
-        "password_hash": hashlib.sha256("Julia".encode()).hexdigest(),
+        "password_hash": hashlib.sha256("6o5OeXT8lPwuMP".encode()).hexdigest(),
         "role": "admin",
         "display_name": "Julia",
     },
@@ -60,10 +61,23 @@ def load_data():
             call_type, customer_intent, urgency, resolution_status,
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
+            silence_pct, pause_count, operator_talk_ratio, checklist_json,
             analyzed_at
         FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
+    conn.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def load_segments(file_name: str) -> pd.DataFrame:
+    conn = get_connection()
+    df = pd.read_sql(
+        "SELECT seg_index, start_sec, end_sec, speaker, text FROM call_segments "
+        "WHERE file_name = ? ORDER BY seg_index",
+        conn, params=(file_name,),
+    )
     conn.close()
     return df
 
@@ -112,16 +126,18 @@ with tab_analytics:
 
     # ── KPI карточки ──────────────────────────────────────────────────────────
     st.markdown("### Ключевые показатели")
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
     avg_agent = df["agent_performance_score"].mean()
     avg_client = df["customer_satisfaction"].mean()
     resolved_pct = (df["resolution_status"] == "resolved").mean() * 100
     escalated = df["escalation_flag"].sum()
+    avg_silence = df["silence_pct"].mean()
     k1.metric("Звонков", len(df), f"из {len(df_all)} всего")
     k2.metric("Оценка оператора", f"{avg_agent:.1f}/10")
     k3.metric("Удовл. клиента", f"{avg_client:.1f}/10")
     k4.metric("Решено", f"{resolved_pct:.0f}%")
     k5.metric("Эскалаций", int(escalated))
+    k6.metric("Тишина в диалоге", f"{avg_silence:.0f}%" if pd.notna(avg_silence) else "—")
 
     st.markdown("---")
 
@@ -220,9 +236,13 @@ with tab_analytics:
             st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
             st.markdown(f"- **Срочность:** {row['urgency']}")
             st.markdown(f"- **Статус:** {row['resolution_status']}")
-            st.markdown(f"- **Оценка оператора:** {row['agent_performance_score']}/10")
+            st.markdown(f"- **Оценка оператора (чек-лист):** {row['agent_performance_score']}/10")
             st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
             st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
+            if pd.notna(row["silence_pct"]):
+                st.markdown(f"- **Тишина в диалоге:** {row['silence_pct']:.0f}% ({int(row['pause_count'])} пауз)")
+            if pd.notna(row["operator_talk_ratio"]):
+                st.markdown(f"- **Доля речи оператора:** {row['operator_talk_ratio']:.0f}%")
             topics = row["key_topics"]
             if topics:
                 try:
@@ -233,12 +253,31 @@ with tab_analytics:
                             st.markdown(f"  - {t}")
                 except Exception:
                     pass
+
+            checklist_json = row["checklist_json"]
+            if checklist_json:
+                try:
+                    checklist_result = json.loads(checklist_json)
+                    st.markdown("**Чек-лист:**")
+                    for item in CHECKLIST:
+                        passed = checklist_result.get(item["key"])
+                        icon = "✅" if passed else "❌"
+                        st.markdown(f"  {icon} {item['label']} ({item['weight']})")
+                except Exception:
+                    pass
         with d2:
             if row["call_summary"]:
                 st.markdown("**Резюме**")
                 st.info(row["call_summary"])
-            with st.expander("📄 Транскрипт звонка", expanded=False):
-                st.text(row["transcript_text"])
+            with st.expander("📄 Транскрипт звонка (по репликам)", expanded=False):
+                segments_df = load_segments(row["file_name"])
+                if segments_df.empty:
+                    st.text(row["transcript_text"])
+                else:
+                    speaker_label = {"operator": "🧑‍💼 Оператор", "client": "🙋 Клиент", "unknown": "❔"}
+                    for _, seg in segments_df.iterrows():
+                        label = speaker_label.get(seg["speaker"], seg["speaker"])
+                        st.markdown(f"**{label}** _{seg['start_sec']:.0f}–{seg['end_sec']:.0f}с_: {seg['text']}")
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
