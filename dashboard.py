@@ -75,7 +75,7 @@ def load_segments(file_name: str) -> pd.DataFrame:
     conn = get_connection()
     df = pd.read_sql(
         "SELECT seg_index, start_sec, end_sec, speaker, text FROM call_segments "
-        "WHERE file_name = ? ORDER BY seg_index",
+        "WHERE file_name = %s ORDER BY seg_index",
         conn, params=(file_name,),
     )
     conn.close()

@@ -1,8 +1,12 @@
-"""Локальная SQLite-база для Call Center Analytics (замена Snowflake)."""
-import sqlite3
+"""PostgreSQL-подключение для Call Center Analytics (замена SQLite)."""
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "call_center.db")
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ai_transcribed_calls (
@@ -55,18 +59,17 @@ _NEW_CALL_ANALYSIS_COLUMNS = {
 }
 
 
-def _migrate(conn: sqlite3.Connection):
-    cur = conn.cursor()
-    cur.execute("PRAGMA table_info(call_analysis)")
-    existing = {row[1] for row in cur.fetchall()}
-    for col, coltype in _NEW_CALL_ANALYSIS_COLUMNS.items():
-        if col not in existing:
-            cur.execute(f"ALTER TABLE call_analysis ADD COLUMN {col} {coltype}")
+def _migrate(conn):
+    with conn.cursor() as cur:
+        for col, coltype in _NEW_CALL_ANALYSIS_COLUMNS.items():
+            cur.execute(f"ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS {col} {coltype}")
     conn.commit()
 
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
+def get_connection():
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute(SCHEMA)
+    conn.commit()
     _migrate(conn)
     return conn

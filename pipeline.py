@@ -1,6 +1,6 @@
 """
 Call Center Analytics Pipeline
-Whisper (medium) → пауза/диаризация (DIY) → ollama-чек-лист → локальная SQLite-база
+Whisper (medium) → пауза/диаризация (DIY) → ollama-чек-лист → PostgreSQL
 """
 
 import os
@@ -182,7 +182,7 @@ def analyze_all(transcripts: list[dict]) -> list[dict]:
     return results
 
 
-# ── Шаг 3: Загрузка в локальную SQLite-базу ───────────────────────────────────
+# ── Шаг 3: Загрузка в PostgreSQL ────────────────────────────────────────────
 def upload_to_db(records: list[dict]):
     conn = get_connection()
     cur = conn.cursor()
@@ -232,7 +232,7 @@ def upload_to_db(records: list[dict]):
     cur.executemany(
         """INSERT INTO ai_transcribed_calls
            (file_name, department, call_topic, transcript_text, detected_language, duration_sec)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s)""",
         transcription_rows,
     )
     print(f"  Загружено транскриптов: {len(transcription_rows)}")
@@ -244,14 +244,14 @@ def upload_to_db(records: list[dict]):
             resolution_status, agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, silence_sec, silence_pct, pause_count,
             operator_talk_ratio, checklist_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         analysis_rows,
     )
     print(f"  Загружено аналитических записей: {len(analysis_rows)}")
 
     cur.executemany(
         """INSERT INTO call_segments (file_name, seg_index, start_sec, end_sec, speaker, text)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s)""",
         segment_rows,
     )
     print(f"  Загружено сегментов (диаризация): {len(segment_rows)}")
@@ -284,14 +284,14 @@ def main():
         json.dump(records, f, ensure_ascii=False, indent=2)
     print(f"      Кэш сохранён: {cache_path}\n")
 
-    print("[3/3] Загрузка в локальную базу (call_center.db)...")
+    print("[3/3] Загрузка в PostgreSQL...")
     upload_to_db(records)
     print("      Готово\n")
 
     elapsed = (datetime.now() - start).seconds
     print(f"{'='*60}")
     print(f"Pipeline завершён за {elapsed//60}м {elapsed%60}с")
-    print(f"База: call_center.db (таблицы ai_transcribed_calls, call_analysis, call_segments)")
+    print(f"База: PostgreSQL (таблицы ai_transcribed_calls, call_analysis, call_segments)")
     print(f"{'='*60}\n")
 
     # Быстрая проверка

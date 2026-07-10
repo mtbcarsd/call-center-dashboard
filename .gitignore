@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+call_center.db
 .streamlit/secrets.toml
 results_cache.json
 *.wav
