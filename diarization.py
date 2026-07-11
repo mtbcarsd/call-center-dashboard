@@ -1,57 +1,82 @@
-"""Лёгкая DIY-диаризация оператор/клиент без готовых спикер-моделей.
+"""Диаризация оператор/клиент через pyannote.audio (pretrained pipeline).
 
-Записи в этом проекте — моно (см. audio_original_data, 8kHz), поэтому
-честного разделения каналов нет. Вместо тяжёлых pretrained-моделей (pyannote
-требует HF-токен и одобрение лицензии) используем: MFCC-признаки по каждому
-сегменту Whisper + кластеризация KMeans на 2 спикера + эвристика, кто из
-кластеров — оператор (говорит первым / произносит приветствие).
+Whisper даёт сегменты речи без привязки к спикеру. pyannote определяет
+временные интервалы речи каждого спикера независимо от Whisper; сегмент
+Whisper относим к спикеру с наибольшим пересечением по времени. Кто из
+двух спикеров — оператор, определяем эвристикой: приветственная фраза
+среди первых реплик (иначе — говорит первым, стандарт для входящих
+звонков банка).
 """
+import os
 import re
-import numpy as np
+
 import librosa
-from sklearn.cluster import KMeans
+import torch
+from dotenv import load_dotenv
+from pyannote.audio import Pipeline
+
+load_dotenv()
 
 GREETING_WORDS = re.compile(
     r"\b(здравствуйте|добрый день|добрый вечер|слушаю вас|банк|чем могу помочь|меня зовут)\b",
     re.IGNORECASE,
 )
 
+_pipeline = None
 
-def _segment_features(y: np.ndarray, sr: int, start: float, end: float) -> np.ndarray:
-    i0, i1 = int(start * sr), int(end * sr)
-    clip = y[i0:i1]
-    if len(clip) < sr * 0.05:  # слишком короткий кусок для MFCC
-        clip = np.pad(clip, (0, max(0, int(sr * 0.05) - len(clip))))
-    mfcc = librosa.feature.mfcc(y=clip, sr=sr, n_mfcc=13)
-    return np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)])
+
+def _get_pipeline() -> Pipeline:
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"]
+        )
+    return _pipeline
+
+
+def _overlap(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
+    return max(0.0, min(a_end, b_end) - max(a_start, b_start))
 
 
 def diarize(audio_path: str, segments: list[dict]) -> list[str]:
-    """Возвращает список меток 'operator'/'client'/'unknown' — по одной на сегмент."""
-    if len(segments) < 2:
+    """Возвращает список меток 'operator'/'client'/'unknown' — по одной на сегмент Whisper."""
+    if not segments:
+        return []
+
+    # torchcodec (дефолтный аудио-бэкенд pyannote 4.x) требует ffmpeg 4/5 (libavutil
+    # so.56/57); в системе стоит ffmpeg 6 (so.58) — грузим waveform сами через librosa
+    # и обходим torchcodec целиком.
+    y, sr = librosa.load(audio_path, sr=None, mono=True)
+    audio_input = {"waveform": torch.from_numpy(y).unsqueeze(0), "sample_rate": sr}
+    output = _get_pipeline()(audio_input, num_speakers=2)
+    annotation = output.speaker_diarization
+    turns = [
+        (turn.start, turn.end, label)
+        for turn, _, label in annotation.itertracks(yield_label=True)
+    ]
+
+    raw_labels = []
+    for seg in segments:
+        best_label, best_overlap = None, 0.0
+        for t_start, t_end, label in turns:
+            ov = _overlap(seg["start"], seg["end"], t_start, t_end)
+            if ov > best_overlap:
+                best_overlap, best_label = ov, label
+        raw_labels.append(best_label)  # None — нет пересечения (тишина/шум)
+
+    speaker_labels = sorted({lbl for lbl in raw_labels if lbl is not None})
+    if len(speaker_labels) < 2:
         return ["unknown"] * len(segments)
 
-    y, sr = librosa.load(audio_path, sr=None, mono=True)
-
-    features = np.array([
-        _segment_features(y, sr, seg["start"], seg["end"]) for seg in segments
-    ])
-
-    n_clusters = 2 if len(segments) >= 2 else 1
-    labels = KMeans(n_clusters=n_clusters, n_init=10, random_state=0).fit_predict(features)
-
-    # Эвристика: оператор — кластер сегмента с приветственной фразой среди первых
-    # трёх реплик; если такой не нашли, считаем оператором того, кто говорит первым
-    # (стандарт для входящих звонков банка).
-    operator_cluster = labels[0]
-    for seg, lbl in zip(segments[:3], labels[:3]):
-        if GREETING_WORDS.search(seg["text"]):
-            operator_cluster = lbl
+    operator_label = raw_labels[0] if raw_labels[0] is not None else speaker_labels[0]
+    for seg, lbl in zip(segments[:3], raw_labels[:3]):
+        if lbl is not None and GREETING_WORDS.search(seg["text"]):
+            operator_label = lbl
             break
 
     return [
-        "operator" if lbl == operator_cluster else "client"
-        for lbl in labels
+        "unknown" if lbl is None else ("operator" if lbl == operator_label else "client")
+        for lbl in raw_labels
     ]
 
 
