@@ -3,76 +3,24 @@ Call Center Analytics Pipeline
 Whisper (medium) → пауза/диаризация (DIY) → ollama-чек-лист → PostgreSQL
 """
 
+import asyncio
 import os
 import json
 import time
-import re
-import requests
-from faster_whisper import WhisperModel
 from datetime import datetime
 
 from db import get_connection
-from checklist import CHECKLIST, weighted_score
-from diarization import diarize, operator_talk_ratio
+from asr.transcriber import Transcriber, DEFAULT_MODEL as WHISPER_MODEL, DEFAULT_LANGUAGE as WHISPER_LANGUAGE
+from asr.diarizer import diarize, operator_talk_ratio
+from orchestrator import analyze as orchestrate_analysis
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 AUDIO_ROOT = "/home/dsneo/claude_projects/call_center_dashboard/audio_original_data"
 DEPT_MAP = {"ОО": "OO", "ОРККиП": "ORKKiP"}
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5-coder:7b"
-
-WHISPER_MODEL = "medium"
-WHISPER_LANGUAGE = "ru"
-
-PAUSE_THRESHOLD_SEC = 2.0  # gap между репликами дольше этого считаем паузой
-
-_CHECKLIST_QUESTIONS = "\n".join(
-    f'  "{item["key"]}": <true/false — {item["question"]}>' for item in CHECKLIST
-)
-
-ANALYSIS_PROMPT = """Ты аналитик колл-центра банка. Проанализируй транскрипт звонка и верни ТОЛЬКО валидный JSON, без пояснений и markdown.
-
-Транскрипт:
-{transcript}
-
-Верни JSON строго в этом формате (checklist — по каждому пункту true либо false):
-{{
-  "checklist": {{
-{checklist_questions}
-  }},
-  "call_type": "тип обращения одной фразой",
-  "customer_intent": "намерение клиента одной фразой",
-  "urgency": "low | medium | high",
-  "resolution_status": "resolved | unresolved | escalated",
-  "customer_satisfaction_score": <целое число от 1 до 10>,
-  "escalation_flag": <true | false>,
-  "key_topics": ["тема1", "тема2"],
-  "call_summary": "краткое резюме звонка 2-3 предложения на русском"
-}}"""
-
 
 # ── Шаг 1: Транскрипция ───────────────────────────────────────────────────────
-def compute_pause_metrics(segments: list[dict], threshold: float = PAUSE_THRESHOLD_SEC) -> dict:
-    if len(segments) < 2:
-        return {"silence_sec": 0.0, "pause_count": 0, "silence_pct": 0.0}
-    total_pause = 0.0
-    pause_count = 0
-    for prev, cur in zip(segments, segments[1:]):
-        gap = cur["start"] - prev["end"]
-        if gap > threshold:
-            total_pause += gap
-            pause_count += 1
-    duration = segments[-1]["end"] - segments[0]["start"]
-    silence_pct = round(total_pause / duration * 100, 1) if duration > 0 else 0.0
-    return {
-        "silence_sec": round(total_pause, 1),
-        "pause_count": pause_count,
-        "silence_pct": silence_pct,
-    }
-
-
-def transcribe_all(model: WhisperModel) -> list[dict]:
+def transcribe_all(transcriber: Transcriber) -> list[dict]:
     results = []
     for dept_ru, dept_en in DEPT_MAP.items():
         dept_path = os.path.join(AUDIO_ROOT, dept_ru)
@@ -83,102 +31,50 @@ def transcribe_all(model: WhisperModel) -> list[dict]:
             call_topic = fname.replace(".wav", "")
             print(f"  [{dept_en}] {call_topic} ...", end=" ", flush=True)
             t0 = time.time()
-            raw_segments, info = model.transcribe(
-                fpath, language=WHISPER_LANGUAGE, beam_size=5
-            )
-            segments = [
-                {"start": seg.start, "end": seg.end, "text": seg.text.strip()}
-                for seg in raw_segments
-            ]
-            text = " ".join(seg["text"] for seg in segments)
+            result = transcriber.run(fpath)
             elapsed = time.time() - t0
-            print(f"{info.duration:.0f}с аудио → {elapsed:.0f}с транскрипция")
+            print(f"{result['duration_sec']:.0f}с аудио → {elapsed:.0f}с транскрипция")
 
-            pause_metrics = compute_pause_metrics(segments)
-
-            speakers = diarize(fpath, segments)
-            op_ratio = operator_talk_ratio(segments, speakers)
+            speakers = diarize(fpath, result["segments"])
+            op_ratio = operator_talk_ratio(result["segments"], speakers)
 
             results.append(
                 {
                     "file_name": fname,
                     "department": dept_en,
                     "call_topic": call_topic,
-                    "transcript_text": text,
-                    "detected_language": info.language,
-                    "duration_sec": round(info.duration, 1),
-                    "segments": segments,
                     "speakers": speakers,
                     "operator_talk_ratio": op_ratio,
-                    **pause_metrics,
+                    **result,
                 }
             )
     return results
 
 
-# ── Шаг 2: Анализ через ollama (чек-лист) ─────────────────────────────────────
-def extract_json(text: str) -> dict | None:
-    # Убрать markdown-блоки если модель всё равно их добавила
-    text = re.sub(r"```(?:json)?", "", text).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Попробовать найти JSON внутри текста
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                return None
-    return None
-
-
-def analyze_call(transcript: str) -> dict:
-    prompt = ANALYSIS_PROMPT.format(
-        transcript=transcript[:3000], checklist_questions=_CHECKLIST_QUESTIONS
-    )
-    try:
-        resp = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1},
-            },
-            timeout=120,
-        )
-        resp.raise_for_status()
-        raw = resp.json().get("response", "")
-        parsed = extract_json(raw)
-        if parsed:
-            return parsed
-        print(f"\n    [!] Не удалось распарсить JSON: {raw[:200]}")
-    except Exception as e:
-        print(f"\n    [!] ollama ошибка: {e}")
-    return {
-        "checklist": {item["key"]: False for item in CHECKLIST},
-        "call_type": "unknown",
-        "customer_intent": "unknown",
-        "urgency": "medium",
-        "resolution_status": "unresolved",
-        "customer_satisfaction_score": 5,
-        "escalation_flag": False,
-        "key_topics": [],
-        "call_summary": "Анализ недоступен",
-    }
-
-
+# ── Шаг 2: Анализ через 4 агента (classifier/quality/compliance/summarizer) ───
 def analyze_all(transcripts: list[dict]) -> list[dict]:
     results = []
     for item in transcripts:
         print(f"  [{item['department']}] {item['call_topic']} ...", end=" ", flush=True)
         t0 = time.time()
-        analysis = analyze_call(item["transcript_text"])
+        analysis = asyncio.run(orchestrate_analysis(item["transcript_text"]))
         elapsed = time.time() - t0
         print(f"{elapsed:.0f}с")
-        analysis["agent_performance_score"] = weighted_score(analysis.get("checklist", {}))
-        results.append({**item, **analysis})
+        flat = {
+            "call_type": analysis["classification"]["topic"],
+            "urgency": analysis["classification"]["priority"],
+            "customer_intent": analysis["customer_intent"],
+            "resolution_status": analysis["resolution_status"],
+            "customer_satisfaction_score": analysis["customer_satisfaction_score"],
+            "escalation_flag": analysis["escalation_flag"],
+            "key_topics": analysis["key_topics"],
+            "call_summary": analysis["summary"],
+            "checklist": analysis["quality_score"]["checklist"],
+            "agent_performance_score": analysis["quality_score"]["total"] / 10,
+            "compliance": analysis["compliance"],
+            "action_items": analysis["action_items"],
+        }
+        results.append({**item, **flat})
     return results
 
 
@@ -225,6 +121,8 @@ def upload_to_db(records: list[dict]):
             r.get("pause_count"),
             r.get("operator_talk_ratio"),
             json.dumps(r.get("checklist", {}), ensure_ascii=False),
+            json.dumps(r.get("compliance", {}), ensure_ascii=False),
+            json.dumps(r.get("action_items", []), ensure_ascii=False),
         ))
         for i, (seg, spk) in enumerate(zip(r.get("segments", []), r.get("speakers", []))):
             segment_rows.append((r["file_name"], i, seg["start"], seg["end"], spk, seg["text"]))
@@ -243,8 +141,8 @@ def upload_to_db(records: list[dict]):
             sentiment_score, sentiment_label, call_type, customer_intent, urgency,
             resolution_status, agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, silence_sec, silence_pct, pause_count,
-            operator_talk_ratio, checklist_json)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            operator_talk_ratio, checklist_json, compliance_json, action_items_json)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         analysis_rows,
     )
     print(f"  Загружено аналитических записей: {len(analysis_rows)}")
@@ -269,12 +167,12 @@ def main():
     print(f"{'='*60}\n")
 
     print(f"[1/3] Транскрипция + паузы + диаризация (Whisper {WHISPER_MODEL})...")
-    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
-    transcripts = transcribe_all(model)
-    del model  # освободить RAM перед ollama
+    transcriber = Transcriber(WHISPER_MODEL, WHISPER_LANGUAGE)
+    transcripts = transcribe_all(transcriber)
+    del transcriber  # освободить RAM перед ollama
     print(f"      Готово: {len(transcripts)} файлов\n")
 
-    print(f"[2/3] Анализ по чек-листу (ollama / {OLLAMA_MODEL})...")
+    print("[2/3] Анализ через 4 агента (classifier/quality/compliance/summarizer)...")
     records = analyze_all(transcripts)
     print(f"      Готово: {len(records)} записей\n")
 

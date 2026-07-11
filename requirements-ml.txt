@@ -1,0 +1,20 @@
+# Тяжёлые ML/сервисные зависимости — ASR, диаризация, агенты, API.
+# Отдельно от requirements.txt (лёгкий, для Streamlit/Railway) — эти пакеты
+# не нужны для дашборда и не должны раздувать Railway-деплой.
+faster-whisper==1.2.1
+pyannote.audio==4.0.7
+librosa==0.11.0
+torch==2.12.1
+openai==2.45.0
+psycopg2==2.9.12
+python-dotenv==1.2.2
+requests==2.34.2
+fastapi==0.139.0
+uvicorn[standard]==0.50.0
+python-multipart==0.0.32
+jiwer==4.0.0
+edge-tts
+pydub
+pytest
+pytest-asyncio
+httpx

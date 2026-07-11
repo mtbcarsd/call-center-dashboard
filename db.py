@@ -56,6 +56,8 @@ _NEW_CALL_ANALYSIS_COLUMNS = {
     "pause_count": "INTEGER",
     "operator_talk_ratio": "REAL",
     "checklist_json": "TEXT",
+    "compliance_json": "TEXT",
+    "action_items_json": "TEXT",
 }
 
 

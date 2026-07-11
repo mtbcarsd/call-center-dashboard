@@ -1,0 +1,92 @@
+{
+  "title": "Call Center Analytics",
+  "uid": "call-center-analytics",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Всего звонков",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "targets": [
+        { "rawSql": "SELECT COUNT(*) AS value FROM call_analysis", "format": "table", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Средняя оценка оператора (0-10)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "fieldConfig": { "defaults": { "decimals": 1, "max": 10, "min": 0 } },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(agent_performance_score)::numeric, 1) AS value FROM call_analysis",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Звонки по срочности",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "targets": [
+        {
+          "rawSql": "SELECT urgency, COUNT(*) AS count FROM call_analysis GROUP BY urgency",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Топ тем обращений",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "targets": [
+        {
+          "rawSql": "SELECT call_type, COUNT(*) AS count FROM call_analysis GROUP BY call_type ORDER BY count DESC LIMIT 10",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Compliance: доля звонков без нарушений",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(100.0 * SUM(CASE WHEN compliance_json::jsonb->>'passed' = 'true' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS value FROM call_analysis WHERE compliance_json IS NOT NULL",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Отделы: средняя оценка",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "call_center_postgres" },
+      "targets": [
+        {
+          "rawSql": "SELECT department, ROUND(AVG(agent_performance_score)::numeric, 1) AS avg_score FROM call_analysis GROUP BY department",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

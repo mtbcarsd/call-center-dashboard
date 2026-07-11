@@ -1,0 +1,18 @@
+# Значения должны совпадать с POSTGRES_USER/PASSWORD/DB в .env (docker-compose
+# не прокидывает переменные окружения внутрь provisioning YAML автоматически,
+# поэтому при смене пароля в .env нужно поправить и здесь).
+apiVersion: 1
+datasources:
+  - name: call_center_postgres
+    uid: call_center_postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: call_center
+    user: call_center_app
+    isDefault: true
+    secureJsonData:
+      password: call_center_app
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600

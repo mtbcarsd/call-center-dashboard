@@ -1,97 +1,242 @@
-# 📞 Call Center Analytics Dashboard
+# 📞 Call Center Analytics
 
-Система аналитики звонков колл-центра банка на основе локальной транскрипции и LLM-анализа с визуализацией в Streamlit.
+Прототип системы речевой аналитики контакт-центра банка: транскрибация звонков (ASR),
+диаризация оператор/клиент, анализ через 4 независимых LLM-агента (классификация,
+контроль качества, compliance, суммаризация), OpenWebUI-чат и REST API поверх общего
+пайплайна.
+
+Архитектура ориентируется на критерии тестового задания «AI Engineer — речевая
+аналитика контакт-центра» ([ZubikIT/mtbank-ai-hiring](https://github.com/ZubikIT/mtbank-ai-hiring)),
+но развивается как личный проект — без публикации отдельного репозитория/заявки.
+
+## Архитектура
+
+Один общий слой ASR + агентов переиспользуется тремя разными фасадами:
+
+```
+                    ┌───────────────────────────────┐
+                    │  asr/transcriber.py             │  faster-whisper (medium, CPU)
+                    │  asr/diarizer.py                 │  pyannote/speaker-diarization-3.1
+                    └───────────────┬───────────────────┘
+                                    │ transcript + segments + speakers
+                    ┌───────────────▼───────────────────┐
+                    │  orchestrator.py (Supervisor)       │  asyncio.gather — 4 агента параллельно
+                    └───────────────┬───────────────────┘
+              ┌─────────────────────┼─────────────────────┐
+    agents/classifier.py  agents/quality.py  agents/compliance.py  agents/summarizer.py
+              └─────────────────────┼─────────────────────┘
+                                    │ единый JSON-контракт
+        ┌───────────────────────────┼───────────────────────────┐
+        │                           │                            │
+ pipeline.py (batch,          webui_pipeline.py            api/main.py
+ → Postgres, питает           (OpenWebUI Pipeline,          (FastAPI: POST /analyze,
+ Streamlit + Grafana)         чат-интерфейс)                GET /trends, WS realtime)
+```
+
+### Почему Supervisor, а не LangGraph
+
+Все 4 агента независимы друг от друга — каждому нужен только транскрипт, без обмена
+промежуточными результатами. Граф зависимостей (LangGraph) здесь избыточен: свой
+`asyncio.gather`-Supervisor (`orchestrator.py`) проще, быстрее в demo (все агенты
+уходят в LLM параллельно) и тривиально unit-тестируется без дополнительного фреймворка.
+
+### Почему Ollama + OpenAI-совместимый клиент
+
+`agents/base.py` использует `openai` Python SDK с настраиваемым `base_url` —
+по умолчанию локальный Ollama (`http://localhost:11434/v1`, сам Ollama отдаёт
+OpenAI-совместимый `/v1/chat/completions`). Переключение на Groq/OpenRouter/Together
+делается только через `.env` (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), без
+изменений кода — важно для демо без GPU.
 
 ## Стек технологий
 
 | Компонент | Технология |
-|-----------|-----------|
-| Транскрипция | faster-whisper (medium, CPU) |
-| LLM-анализ | ollama · qwen2.5-coder:7b |
-| Хранилище | локальная SQLite-база (`call_center.db`) |
-| Дашборд | Streamlit + Plotly |
-| Деплой | Railway |
+|---|---|
+| ASR | faster-whisper (medium, CPU) |
+| Диаризация | pyannote/speaker-diarization-3.1 (pretrained) |
+| LLM-агенты | Ollama (qwen2.5-coder:7b) через OpenAI-совместимый клиент |
+| Оркестрация | собственный async Supervisor (`orchestrator.py`) |
+| Чат-интерфейс | OpenWebUI + Pipelines (`webui_pipeline.py`) |
+| REST API | FastAPI (`api/main.py`) |
+| Хранилище | PostgreSQL |
+| Batch-аналитика | Streamlit + Plotly (`dashboard.py`, доп. к OpenWebUI) |
+| Мониторинг (бонус) | Grafana поверх той же Postgres-базы |
+| Тесты | pytest + pytest-asyncio, LLM-вызовы замоканы |
+| Контейнеризация | Docker Compose |
 
-## Архитектура pipeline
+## Компоненты анализа (4 агента)
 
+| Агент | Файл | Задача |
+|---|---|---|
+| 🏷️ Классификатор | `agents/classifier.py` | Тематика (кредиты/карты/переводы/жалобы/другое), приоритет, намерение клиента |
+| ⭐ Качество | `agents/quality.py` | Чек-лист оператора (переиспользует `checklist.py`): приветствие, выявление потребности, решение, отработка возражений, вежливость, прощание |
+| 🛡️ Compliance | `agents/compliance.py` | Regex-детектор запрещённых фраз + LLM-проверка обязательных дисклеймеров |
+| 📝 Суммаризатор | `agents/summarizer.py` | Резюме звонка + action items + статус разрешения обращения |
+| 📈 Тренды (бонус) | `agents/trends.py` | Паттерны/проблемы по нескольким последним звонкам (`GET /trends`) |
+
+Каждый вызов агента логируется JSON-строкой в stdout (`agents/base.py`):
+`{"agent": ..., "input_chars": ..., "output": ..., "elapsed_ms": ..., "parse_failed": ..., "error": ...}`.
+
+⚠️ Список запрещённых фраз в `agents/compliance.py` — иллюстративный стартовый набор,
+для боевого использования нужно согласовать с реальным compliance-отделом банка.
+
+## Как запустить
+
+### Docker Compose (полный стек)
+
+```bash
+cp .env.example .env   # заполнить HF_TOKEN (см. ниже), остальное можно оставить по умолчанию
+docker compose up --build
+docker compose exec ollama ollama pull qwen2.5-coder:7b   # один раз, модель ~5GB
 ```
-WAV-файлы (локально)
-      ↓  faster-whisper medium
-Транскрипты (русский текст)
-      ↓  ollama / qwen2.5-coder:7b
-Анализ: тип, намерение, срочность, оценки, резюме
-      ↓  sqlite3 (db.py)
-call_center.db: ai_transcribed_calls + call_analysis
-      ↓
-Streamlit Dashboard
+
+- OpenWebUI: http://localhost:3000 — Admin Panel → Settings → Connections → добавить
+  `http://pipelines:9099` (или прописан автоматически через `OPENAI_API_BASE_URL`)
+- REST API: http://localhost:8000/docs (Swagger)
+- Grafana: http://localhost:3001 (admin / значение `GRAFANA_ADMIN_PASSWORD`)
+- Postgres: localhost:5432
+
+### HF_TOKEN (обязателен для диаризации)
+
+Диаризация использует pyannote (гейтед-модели на HuggingFace). Нужно:
+1. Создать токен: https://hf.co/settings/tokens
+2. Принять условия доступа (залогинившись тем же аккаунтом):
+   - https://hf.co/pyannote/speaker-diarization-3.1
+   - https://hf.co/pyannote/segmentation-3.0
+   - https://hf.co/pyannote/speaker-diarization-community-1
+3. Вписать токен в `.env` → `HF_TOKEN`
+
+### Локально без Docker
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-ml.txt
+cp .env.example .env   # заполнить DATABASE_URL (локальный Postgres) и HF_TOKEN
+
+ollama serve &
+ollama pull qwen2.5-coder:7b
+
+uvicorn api.main:app --reload --port 8000        # REST API
+python pipeline.py                                # batch-прогон → Postgres → Streamlit/Grafana
+streamlit run dashboard.py                         # доп. аналитика (не обязательна для ТЗ)
 ```
 
-Ранее хранилищем был облачный Snowflake — отказались от него в пользу локальной SQLite-базы (без внешних зависимостей, паролей и облачных лимитов).
+## REST API
+
+```bash
+# Файл
+curl -X POST http://localhost:8000/analyze -F "file=@test_data/kredit_nalichnymi.wav"
+
+# URL
+curl -X POST http://localhost:8000/analyze -F "url=https://example.com/call.wav"
+
+# Тренды по последним звонкам (бонус)
+curl "http://localhost:8000/trends?limit=20"
+```
+
+Ответ `/analyze` — JSON: `transcript` (по репликам, спикер+таймкоды), `classification`,
+`quality_score`, `compliance`, `summary`, `action_items`.
+
+### Realtime WebSocket (бонус, `/transcribe/stream`)
+
+Клиент шлёт WAV-чанки ~2-3с бинарными сообщениями, сервер транскрибирует **каждый чанк
+независимо** (без склейки контекста между чанками) и возвращает partial-текст —
+осознанный trade-off ради задержки < 3с. Для точного результата на весь файл
+используйте `POST /analyze`.
+
+## Тестовые данные и WER
+
+Реальные записи (`audio_original_data/`) — настоящие звонки клиентов банка, остаются
+**только локально** (`.gitignore`) и не публикуются. В репозиторий вместо них включены
+**синтетические** звонки (`test_data/`, сгенерированы `edge-tts`: оператор —
+`ru-RU-SvetlanaNeural`, клиент — `ru-RU-DmitryNeural`) — 6 файлов, суммарно 5.4 минуты,
+покрывают темы кредиты/карты/переводы/жалобы/другое, один файл — в телефонном качестве
+8kHz (`kredit_nalichnymi_8khz.wav`).
+
+```bash
+python scripts/generate_synthetic_calls.py   # → test_data/*.wav + *.txt (эталон)
+python scripts/compute_wer.py                # → test_data/wer_report.md
+```
+
+**Средний WER (faster-whisper medium): 23.7%** — полная таблица в
+[`test_data/wer_report.md`](test_data/wer_report.md). WER выше на TTS-синтетике, чем
+обычно ожидается на реальной речи (интонации/паузы TTS отличаются от живой речи);
+8kHz-версия ожидаемо даёт WER на ~3.5 п.п. выше полнополосной (34.8% vs 31.3%).
+
+## Тесты
+
+```bash
+pytest tests/ -v                    # 12 unit + integration тестов, LLM замокан, <1с
+RUN_SLOW_TESTS=1 pytest tests/ -v   # + smoke-тест на живом Ollama
+```
+
+- `tests/test_agents.py` — по каждому агенту: корректный JSON, невалидный JSON → fallback, сбой LLM → fallback
+- `tests/test_pipeline.py` — `orchestrator.analyze()`: агенты мержатся в контракт, частичный отказ агента не роняет весь анализ
+
+## Переменные окружения
+
+См. [`.env.example`](.env.example): `DATABASE_URL`, `HF_TOKEN`, `LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`,
+`WHISPER_MODEL`, `PIPELINES_API_KEY`, `GRAFANA_ADMIN_PASSWORD`.
+
+## Бонусы (+15)
+
+- **Grafana (+5)** — провижининг в `grafana/provisioning/`: датасорс на ту же Postgres-базу
+  + дашборд (звонки по дням, средняя оценка оператора, срочность, топ тем, compliance).
+  Переиспользует SQL из `dashboard.py::load_data()`.
+- **Агент трендов (+5)** — `agents/trends.py` + `GET /trends`, ищет паттерны по последним N звонкам.
+- **Realtime WebSocket (+5)** — `WS /transcribe/stream` в `api/main.py`, см. выше про trade-off по точности.
 
 ## Структура проекта
 
 ```
 call_center_dashboard/
-├── audio_original_data/       # Исходные WAV-файлы
-│   ├── ОО/                    # Отдел обслуживания (5 звонков)
-│   └── ОРККиП/                # Отдел РКК и П (5 звонков)
-├── db.py                      # Схема и подключение к локальной SQLite-базе
-├── dashboard.py               # Streamlit-дашборд
-├── pipeline.py                # Pipeline: транскрипция → анализ → call_center.db
-├── upload_from_cache.py       # Догрузка results_cache.json в базу без пересчёта
-├── call_center.db             # Локальная SQLite-база (не в git)
-├── requirements.txt           # Зависимости для Railway
-├── railway.toml               # Конфигурация деплоя
-└── .streamlit/
-    └── config.toml            # Настройки Streamlit
+├── asr/
+│   ├── transcriber.py          # faster-whisper обёртка
+│   └── diarizer.py             # pyannote-диаризация оператор/клиент
+├── agents/
+│   ├── base.py                 # LLM-клиент (OpenAI-совместимый) + JSON-логи
+│   ├── classifier.py           # тема + приоритет + intent
+│   ├── quality.py               # чек-лист (checklist.py)
+│   ├── compliance.py            # запрещённые фразы + LLM-проверка
+│   ├── summarizer.py            # резюме + action items
+│   └── trends.py                # паттерны по нескольким звонкам (бонус)
+├── orchestrator.py              # Supervisor — 4 агента параллельно
+├── webui_pipeline.py            # OpenWebUI Pipeline (чат)
+├── api/
+│   ├── main.py                  # FastAPI: /analyze, /trends, /transcribe/stream
+│   └── Dockerfile
+├── pipelines/Dockerfile         # образ для сервиса pipelines (webui_pipeline.py + деп.)
+├── pipeline.py                  # batch: audio_original_data/ → Postgres
+├── db.py                        # схема + подключение PostgreSQL
+├── checklist.py                 # чек-лист качества оператора
+├── dashboard.py                 # Streamlit — доп. аналитика (Railway-деплой)
+├── scripts/
+│   ├── generate_synthetic_calls.py
+│   └── compute_wer.py
+├── test_data/                   # синтетические звонки + эталоны + WER-отчёт
+├── tests/                       # pytest: агенты + оркестратор
+├── grafana/provisioning/        # датасорс + дашборд (бонус)
+├── docker-compose.yml
+├── requirements.txt             # лёгкий набор — только для Streamlit/Railway
+├── requirements-ml.txt          # тяжёлые ML/API-зависимости
+└── .env.example
 ```
 
-## База данных (SQLite)
+## База данных (PostgreSQL)
 
-Файл `call_center.db` создаётся и заполняется схемой автоматически при первом подключении (см. `db.py`). Таблицы:
-- `ai_transcribed_calls` — транскрипты, язык, длительность
-- `call_analysis` — полная аналитика: тип, намерение, срочность, оценки, резюме, топики
+Таблицы (см. `db.py`): `ai_transcribed_calls` (транскрипты), `call_analysis` (полная
+аналитика: классификация, чек-лист, compliance, action items, метрики пауз/диаризации),
+`call_segments` (реплики по спикерам). Новые колонки добавляются миграцией
+(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) при подключении — без ручных миграций.
 
-## Дашборд
+## Streamlit-дашборд (доп. аналитика)
+
+Исходный Streamlit-дашборд оставлен как дополнительная панель поверх той же
+Postgres-базы (ТЗ не запрещает доп. интерфейсы, требует лишь чтобы OpenWebUI был
+основным). Задеплоен на Railway, не трогался в рамках этой миграции.
 
 **URL:** https://call-center-dashboard-production-6a6b.up.railway.app
-
 **Логин:** Julia / Julia
-
-### Функциональность
-
-- **Аналитика** — KPI-карточки, графики оценок, диаграмма срочности, сравнение отделов
-- **Таблица звонков** — фильтры по отделу, срочности, статусу; прогресс-бары оценок
-- **Детали звонка** — параметры, резюме, полный транскрипт
-- **Команда** — карточка проекта и участники команды
-
-## Запуск pipeline локально
-
-```bash
-# Активировать окружение
-source .venv/bin/activate
-
-# Убедиться что ollama запущен с моделью qwen2.5-coder:7b
-ollama serve &
-ollama pull qwen2.5-coder:7b
-
-# Запустить pipeline
-python pipeline.py
-```
-
-## Запуск дашборда локально
-
-```bash
-source .venv/bin/activate
-streamlit run dashboard.py
-# → http://localhost:8501
-```
-
-## Переменные окружения
-
-Не требуются — локальная SQLite-база не нуждается в credentials.
-
-⚠️ Если дашборд деплоится на Railway (эфемерная файловая система), `call_center.db` нужно либо подключать через Railway Volume, либо заново прогонять `python pipeline.py` / `python upload_from_cache.py` при каждом деплое — иначе база будет пустой после рестарта контейнера.
 
 ## Команда
 
@@ -102,4 +247,3 @@ streamlit run dashboard.py
 - 🔬 Data Scientist: Масловская Ксения
 - 🔬 Data Scientist: Дымков Алексей
 - 🔬 Data Scientist: Шилкин Андрей
-

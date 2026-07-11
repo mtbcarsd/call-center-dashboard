@@ -6,5 +6,6 @@ call_center.db
 .streamlit/secrets.toml
 results_cache.json
 *.wav
+!test_data/*.wav
 *.mp4
 .claude/settings.local.json

@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-call_center_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-call_center_app}
+      POSTGRES_DB: ${POSTGRES_DB:-call_center}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-call_center_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  pipelines:
+    build:
+      context: .
+      dockerfile: pipelines/Dockerfile
+    depends_on:
+      - ollama
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-call_center_app}:${POSTGRES_PASSWORD:-call_center_app}@postgres:5432/${POSTGRES_DB:-call_center}
+      HF_TOKEN: ${HF_TOKEN}
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:7b}
+      WHISPER_MODEL: ${WHISPER_MODEL:-medium}
+      PIPELINES_API_KEY: ${PIPELINES_API_KEY:-0p3n-w3bu!}
+    ports:
+      - "9099:9099"
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    depends_on:
+      - pipelines
+    environment:
+      OPENAI_API_BASE_URL: http://pipelines:9099
+      OPENAI_API_KEY: ${PIPELINES_API_KEY:-0p3n-w3bu!}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-change-me}
+    volumes:
+      - openwebui_data:/app/backend/data
+    ports:
+      - "3000:8080"
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      - ollama
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-call_center_app}:${POSTGRES_PASSWORD:-call_center_app}@postgres:5432/${POSTGRES_DB:-call_center}
+      HF_TOKEN: ${HF_TOKEN}
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:7b}
+      WHISPER_MODEL: ${WHISPER_MODEL:-medium}
+    ports:
+      - "8000:8000"
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - postgres
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+
+volumes:
+  postgres_data:
+  ollama_data:
+  openwebui_data:
+  grafana_data:
