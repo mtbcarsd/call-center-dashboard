@@ -14,5 +14,6 @@ datasources:
     secureJsonData:
       password: call_center_app
     jsonData:
+      database: call_center
       sslmode: disable
       postgresVersion: 1600
