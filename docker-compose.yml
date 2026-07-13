@@ -36,6 +36,8 @@ services:
       LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:7b}
       WHISPER_MODEL: ${WHISPER_MODEL:-medium}
       PIPELINES_API_KEY: ${PIPELINES_API_KEY:-0p3n-w3bu!}
+      OPENWEBUI_BASE_URL: http://openwebui:8080
+      OPENWEBUI_API_KEY: ${OPENWEBUI_API_KEY:-}
     ports:
       - "9099:9099"
 
@@ -47,6 +49,7 @@ services:
       OPENAI_API_BASE_URL: http://pipelines:9099
       OPENAI_API_KEY: ${PIPELINES_API_KEY:-0p3n-w3bu!}
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-change-me}
+      ENABLE_API_KEYS: "true"
     volumes:
       - openwebui_data:/app/backend/data
     ports:
