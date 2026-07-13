@@ -16,13 +16,25 @@ from orchestrator import analyze as orchestrate_analysis
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 AUDIO_ROOT = "/home/dsneo/claude_projects/call_center_dashboard/audio_original_data"
-DEPT_MAP = {"ОО": "OO", "ОРККиП": "ORKKiP"}
+# Известные отделы транслитерируются для читаемого ярлыка в консоли/БД; любая
+# другая подпапка audio_original_data/ подхватывается автоматически под своим
+# именем — так что новый отдел не нужно прописывать вручную.
+DEPT_LABELS = {"ОО": "OO", "ОРККиП": "ORKKiP"}
+
+
+def _discover_departments() -> dict[str, str]:
+    depts = {
+        name: DEPT_LABELS.get(name, name)
+        for name in sorted(os.listdir(AUDIO_ROOT))
+        if os.path.isdir(os.path.join(AUDIO_ROOT, name))
+    }
+    return depts
 
 
 # ── Шаг 1: Транскрипция ───────────────────────────────────────────────────────
 def transcribe_all(transcriber: Transcriber) -> list[dict]:
     results = []
-    for dept_ru, dept_en in DEPT_MAP.items():
+    for dept_ru, dept_en in _discover_departments().items():
         dept_path = os.path.join(AUDIO_ROOT, dept_ru)
         for fname in sorted(os.listdir(dept_path)):
             if not fname.endswith(".wav"):
