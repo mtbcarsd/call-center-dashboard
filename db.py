@@ -58,6 +58,9 @@ _NEW_CALL_ANALYSIS_COLUMNS = {
     "checklist_json": "TEXT",
     "compliance_json": "TEXT",
     "action_items_json": "TEXT",
+    # Ключ объекта в S3-совместимом бакете (Railway Bucket) для аудиоплеера
+    # в дашборде. NULL, если аудио для этого звонка не заливалось.
+    "audio_key": "TEXT",
 }
 
 

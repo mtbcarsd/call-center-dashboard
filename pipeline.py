@@ -13,6 +13,7 @@ from db import get_connection
 from asr.transcriber import Transcriber, DEFAULT_MODEL as WHISPER_MODEL, DEFAULT_LANGUAGE as WHISPER_LANGUAGE
 from asr.diarizer import diarize, operator_talk_ratio
 from orchestrator import analyze as orchestrate_analysis
+from storage import upload_audio
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 AUDIO_ROOT = "/home/dsneo/claude_projects/call_center_dashboard/audio_original_data"
@@ -49,6 +50,7 @@ def transcribe_all(transcriber: Transcriber) -> list[dict]:
 
             speakers = diarize(fpath, result["segments"])
             op_ratio = operator_talk_ratio(result["segments"], speakers)
+            audio_key = upload_audio(fpath, f"{dept_ru}/{fname}")
 
             results.append(
                 {
@@ -57,6 +59,7 @@ def transcribe_all(transcriber: Transcriber) -> list[dict]:
                     "call_topic": call_topic,
                     "speakers": speakers,
                     "operator_talk_ratio": op_ratio,
+                    "audio_key": audio_key,
                     **result,
                 }
             )
@@ -135,6 +138,7 @@ def upload_to_db(records: list[dict]):
             json.dumps(r.get("checklist", {}), ensure_ascii=False),
             json.dumps(r.get("compliance", {}), ensure_ascii=False),
             json.dumps(r.get("action_items", []), ensure_ascii=False),
+            r.get("audio_key"),
         ))
         for i, (seg, spk) in enumerate(zip(r.get("segments", []), r.get("speakers", []))):
             segment_rows.append((r["file_name"], i, seg["start"], seg["end"], spk, seg["text"]))
@@ -153,8 +157,9 @@ def upload_to_db(records: list[dict]):
             sentiment_score, sentiment_label, call_type, customer_intent, urgency,
             resolution_status, agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, silence_sec, silence_pct, pause_count,
-            operator_talk_ratio, checklist_json, compliance_json, action_items_json)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            operator_talk_ratio, checklist_json, compliance_json, action_items_json,
+            audio_key)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         analysis_rows,
     )
     print(f"  Загружено аналитических записей: {len(analysis_rows)}")

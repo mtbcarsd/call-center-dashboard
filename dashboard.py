@@ -7,6 +7,7 @@ import hashlib
 
 from db import get_connection
 from checklist import CHECKLIST
+from storage import presigned_url
 
 st.set_page_config(
     page_title="Call Center Analytics",
@@ -62,7 +63,7 @@ def load_data():
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
             silence_pct, pause_count, operator_talk_ratio, checklist_json,
-            analyzed_at
+            compliance_json, audio_key, analyzed_at
         FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
@@ -119,7 +120,9 @@ if selected_status != "Все":
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-tab_analytics, tab_team = st.tabs(["📊 Аналитика", "👥 Команда разработчиков"])
+tab_analytics, tab_calls, tab_team = st.tabs(
+    ["📊 Аналитика", "📁 Звонки", "👥 Команда разработчиков"]
+)
 
 with tab_analytics:
     st.caption(f"Локальная база: call_center.db · {len(df)} из {len(df_all)} звонков")
@@ -216,60 +219,117 @@ with tab_analytics:
         },
     )
 
-    # ── Детальный просмотр звонка ─────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Детали звонка")
-    topic_options = df["call_topic"].tolist()
-    if not topic_options:
+# ── Вкладка звонков: галерея + плеер ─────────────────────────────────────────
+with tab_calls:
+    if "selected_call" not in st.session_state:
+        st.session_state["selected_call"] = None
+    if "seek_time" not in st.session_state:
+        st.session_state["seek_time"] = 0.0
+
+    st.caption(f"{len(df)} звонков (после фильтров слева)")
+
+    if df.empty:
         st.info("Нет данных по выбранным фильтрам.")
     else:
-        selected_topic = st.selectbox(
-            "Выберите звонок", options=topic_options,
-            format_func=lambda t: f"{df[df['call_topic']==t]['department'].values[0]} — {t}",
-        )
-        row = df[df["call_topic"] == selected_topic].iloc[0]
-        d1, d2 = st.columns([1, 2])
-        with d1:
-            st.markdown("**Параметры звонка**")
-            st.markdown(f"- **Отдел:** {row['department']}")
-            st.markdown(f"- **Тип:** {row['call_type']}")
-            st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
-            st.markdown(f"- **Срочность:** {row['urgency']}")
-            st.markdown(f"- **Статус:** {row['resolution_status']}")
-            st.markdown(f"- **Оценка оператора (чек-лист):** {row['agent_performance_score']}/10")
-            st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
-            st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
-            if pd.notna(row["silence_pct"]):
-                st.markdown(f"- **Тишина в диалоге:** {row['silence_pct']:.0f}% ({int(row['pause_count'])} пауз)")
-            if pd.notna(row["operator_talk_ratio"]):
-                st.markdown(f"- **Доля речи оператора:** {row['operator_talk_ratio']:.0f}%")
-            topics = row["key_topics"]
-            if topics:
-                try:
-                    topics_list = json.loads(topics) if isinstance(topics, str) else topics
-                    if topics_list:
-                        st.markdown("**Ключевые темы:**")
-                        for t in topics_list:
-                            st.markdown(f"  - {t}")
-                except Exception:
-                    pass
+        urgency_badge = {"low": "🟢", "medium": "🟠", "high": "🔴"}
+        status_icon = {"resolved": "✅", "unresolved": "⏳", "escalated": "🚨"}
 
-            checklist_json = row["checklist_json"]
-            if checklist_json:
-                try:
-                    checklist_result = json.loads(checklist_json)
-                    st.markdown("**Чек-лист:**")
-                    for item in CHECKLIST:
-                        passed = checklist_result.get(item["key"])
-                        icon = "✅" if passed else "❌"
-                        st.markdown(f"  {icon} {item['label']} ({item['weight']})")
-                except Exception:
-                    pass
-        with d2:
-            if row["call_summary"]:
-                st.markdown("**Резюме**")
-                st.info(row["call_summary"])
-            with st.expander("📄 Транскрипт звонка (по репликам)", expanded=False):
+        cols_per_row = 3
+        rows_of_calls = [df.iloc[i:i + cols_per_row] for i in range(0, len(df), cols_per_row)]
+        for chunk in rows_of_calls:
+            cols = st.columns(cols_per_row)
+            for col, (_, call) in zip(cols, chunk.iterrows()):
+                with col, st.container(border=True):
+                    st.markdown(f"**{call['call_topic']}**")
+                    st.caption(f"{call['department']} · {urgency_badge.get(call['urgency'], '⚪')} {call['urgency']}")
+                    score = call["agent_performance_score"]
+                    st.progress(
+                        (score or 0) / 10,
+                        text=f"Оператор {score:.0f}/10" if pd.notna(score) else "Оператор —",
+                    )
+                    st.caption(f"{status_icon.get(call['resolution_status'], '❔')} {call['resolution_status']}")
+                    if st.button("Открыть", key=f"open_{call['file_name']}", use_container_width=True):
+                        st.session_state["selected_call"] = call["file_name"]
+                        st.session_state["seek_time"] = 0.0
+                        st.rerun()
+
+    st.markdown("---")
+
+    selected_file = st.session_state["selected_call"]
+    if not selected_file:
+        st.info("Выберите звонок в галерее выше, чтобы открыть плеер и транскрипт.")
+    else:
+        match = df_all[df_all["file_name"] == selected_file]
+        if match.empty:
+            st.warning("Этот звонок больше не проходит по фильтрам.")
+        else:
+            row = match.iloc[0]
+            st.markdown(f"### {row['call_topic']}")
+
+            audio_url = presigned_url(row.get("audio_key"))
+            if audio_url:
+                st.audio(audio_url, start_time=st.session_state["seek_time"])
+            else:
+                st.caption("🔇 Аудио для этого звонка недоступно (хранилище не настроено или файл не заливался).")
+
+            d1, d2 = st.columns([1, 2])
+            with d1:
+                st.markdown("**Параметры звонка**")
+                st.markdown(f"- **Отдел:** {row['department']}")
+                st.markdown(f"- **Тип:** {row['call_type']}")
+                st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
+                st.markdown(f"- **Срочность:** {row['urgency']}")
+                st.markdown(f"- **Статус:** {row['resolution_status']}")
+                st.markdown(f"- **Оценка оператора (чек-лист):** {row['agent_performance_score']}/10")
+                st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
+                st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
+                if pd.notna(row["silence_pct"]):
+                    st.markdown(f"- **Тишина в диалоге:** {row['silence_pct']:.0f}% ({int(row['pause_count'])} пауз)")
+                if pd.notna(row["operator_talk_ratio"]):
+                    st.markdown(f"- **Доля речи оператора:** {row['operator_talk_ratio']:.0f}%")
+
+                topics = row["key_topics"]
+                if topics:
+                    try:
+                        topics_list = json.loads(topics) if isinstance(topics, str) else topics
+                        if topics_list:
+                            st.markdown("**Ключевые темы:**")
+                            for t in topics_list:
+                                st.markdown(f"  - {t}")
+                    except Exception:
+                        pass
+
+                checklist_json = row["checklist_json"]
+                if checklist_json:
+                    try:
+                        checklist_result = json.loads(checklist_json)
+                        st.markdown("**Чек-лист:**")
+                        for item in CHECKLIST:
+                            passed = checklist_result.get(item["key"])
+                            icon = "✅" if passed else "❌"
+                            st.markdown(f"  {icon} {item['label']} ({item['weight']})")
+                    except Exception:
+                        pass
+
+                compliance_json = row.get("compliance_json")
+                if compliance_json:
+                    try:
+                        compliance = json.loads(compliance_json)
+                        issues = compliance.get("issues") or compliance.get("llm_issues") or []
+                        st.markdown("**Compliance:**")
+                        if issues:
+                            st.warning("⚠️ Найдены замечания:\n" + "\n".join(f"- {i}" for i in issues))
+                        else:
+                            st.success("✅ Нарушений не найдено")
+                    except Exception:
+                        pass
+
+            with d2:
+                if row["call_summary"]:
+                    st.markdown("**Резюме**")
+                    st.info(row["call_summary"])
+
+                st.markdown("**📄 Транскрипт** _(клик по ▶ перематывает плеер на реплику)_")
                 segments_df = load_segments(row["file_name"])
                 if segments_df.empty:
                     st.text(row["transcript_text"])
@@ -277,7 +337,17 @@ with tab_analytics:
                     speaker_label = {"operator": "🧑‍💼 Оператор", "client": "🙋 Клиент", "unknown": "❔"}
                     for _, seg in segments_df.iterrows():
                         label = speaker_label.get(seg["speaker"], seg["speaker"])
-                        st.markdown(f"**{label}** _{seg['start_sec']:.0f}–{seg['end_sec']:.0f}с_: {seg['text']}")
+                        seg_col1, seg_col2 = st.columns([0.06, 0.94])
+                        with seg_col1:
+                            if audio_url and st.button(
+                                "▶", key=f"seek_{row['file_name']}_{seg['seg_index']}"
+                            ):
+                                st.session_state["seek_time"] = float(seg["start_sec"])
+                                st.rerun()
+                        with seg_col2:
+                            st.markdown(
+                                f"**{label}** _{seg['start_sec']:.0f}–{seg['end_sec']:.0f}с_: {seg['text']}"
+                            )
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
