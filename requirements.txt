@@ -1,6 +1,11 @@
 streamlit==1.58.0
 plotly==6.8.0
 pandas==2.2.3
+# Без явного пина ловим ту версию pyarrow, что есть на момент сборки — на Railway
+# это оказалась 25.0.0, которая сегфолтит при конвертации DataFrame в Arrow
+# внутри st.dataframe() (см. dashboard.py "По отделам"). 24.0.0 проверена локально
+# без сегфолтов на той же связке pandas==2.2.3.
+pyarrow==24.0.0
 psycopg2
 python-dotenv
 boto3
