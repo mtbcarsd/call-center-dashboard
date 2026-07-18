@@ -98,6 +98,9 @@ _NEW_CALL_ANALYSIS_COLUMNS = {
     # отдельную таблицу operators) — при 11 звонках отдельная таблица избыточна,
     # для статистики достаточно GROUP BY operator_name.
     "operator_name": "TEXT",
+    # Ручная QA-оценка (0-10), отдельная от agent_performance_score (AI/чек-лист).
+    # NULL, пока проверяющий её не проставил.
+    "qa_score": "REAL",
 }
 
 

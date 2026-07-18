@@ -63,7 +63,7 @@ def load_data():
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
             silence_pct, pause_count, operator_talk_ratio, checklist_json,
-            compliance_json, audio_key, call_type_override, operator_name, analyzed_at
+            compliance_json, audio_key, call_type_override, operator_name, qa_score, analyzed_at
         FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
@@ -90,6 +90,17 @@ def set_operator_name(file_name: str, value: str | None) -> None:
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE call_analysis SET operator_name = %s WHERE file_name = %s",
+            (value, file_name),
+        )
+    conn.commit()
+    conn.close()
+
+
+def set_qa_score(file_name: str, value: float | None) -> None:
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE call_analysis SET qa_score = %s WHERE file_name = %s",
             (value, file_name),
         )
     conn.commit()
@@ -508,6 +519,39 @@ with tab_calls:
                 st.markdown(f"- **Срочность:** {row['urgency']}")
                 st.markdown(f"- **Статус:** {row['resolution_status']}")
                 st.markdown(f"- **Оценка оператора (чек-лист):** {row['agent_performance_score']}/10")
+
+                has_qa_score = pd.notna(row["qa_score"])
+                qa_editing_key = f"editing_qa_{row['file_name']}"
+                if not st.session_state.get(qa_editing_key):
+                    if has_qa_score:
+                        delta = row["qa_score"] - row["agent_performance_score"]
+                        st.markdown(f"- **QA-оценка:** {row['qa_score']:.1f}/10 (Δ {delta:+.1f} к AI)")
+                    else:
+                        st.markdown("- **QA-оценка:** — _(не проставлена)_")
+                    if st.button(
+                        "✏️ Изменить QA-оценку" if has_qa_score else "✏️ Указать QA-оценку",
+                        key=f"edit_qa_{row['file_name']}",
+                    ):
+                        st.session_state[qa_editing_key] = True
+                        st.rerun()
+                else:
+                    new_qa_score = st.number_input(
+                        "QA-оценка (0-10)", min_value=0.0, max_value=10.0, step=0.5,
+                        value=float(row["qa_score"]) if has_qa_score else float(row["agent_performance_score"] or 0),
+                        key=f"new_qa_{row['file_name']}",
+                    )
+                    qc1, qc2 = st.columns(2)
+                    with qc1:
+                        if st.button("💾 Сохранить", key=f"save_qa_{row['file_name']}", use_container_width=True):
+                            set_qa_score(row["file_name"], new_qa_score)
+                            st.session_state[qa_editing_key] = False
+                            st.cache_data.clear()
+                            st.rerun()
+                    with qc2:
+                        if st.button("Отмена", key=f"cancel_qa_{row['file_name']}", use_container_width=True):
+                            st.session_state[qa_editing_key] = False
+                            st.rerun()
+
                 st.markdown(f"- **Удовл. клиента:** {row['customer_satisfaction']}/10")
                 st.markdown(f"- **Эскалация:** {'Да' if row['escalation_flag'] else 'Нет'}")
                 if pd.notna(row["silence_pct"]):
@@ -619,15 +663,19 @@ with tab_operators:
         op_stats = named_df.groupby("operator_name").agg(
             звонков=("file_name", "count"),
             оценка=("agent_performance_score", "mean"),
+            qa=("qa_score", "mean"),
             клиент=("customer_satisfaction", "mean"),
         ).round(1).reset_index()
-        op_stats.columns = ["Оператор", "Звонков", "Оценка (чек-лист)", "Удовл. клиента"]
+        op_stats.columns = ["Оператор", "Звонков", "Оценка (чек-лист)", "QA-оценка", "Удовл. клиента"]
         op_stats = op_stats.sort_values("Звонков", ascending=False)
         st.dataframe(
             op_stats, use_container_width=True, hide_index=True,
             column_config={
                 "Оценка (чек-лист)": st.column_config.ProgressColumn(
                     "Оценка (чек-лист)", min_value=0, max_value=10, format="%.1f/10"
+                ),
+                "QA-оценка": st.column_config.ProgressColumn(
+                    "QA-оценка", min_value=0, max_value=10, format="%.1f/10"
                 ),
                 "Удовл. клиента": st.column_config.ProgressColumn(
                     "Удовл. клиента", min_value=0, max_value=10, format="%.1f/10"
