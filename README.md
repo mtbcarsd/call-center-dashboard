@@ -250,15 +250,16 @@ Postgres-базы (ТЗ не запрещает доп. интерфейсы, т
 
 | Сервис (Railway) | Статус | Комментарий |
 |---|---|---|
-| `call-center-dashboard` (Streamlit) | ✅ работает | Основной публичный дашборд, Phase 1-3 задеплоены (3.4 отложен) |
-| `openwebui` | ✅ работает | Чат-интерфейс, публичный домен |
-| `Postgres` | ✅ работает | Общая база для Streamlit и (при апгрейде) сервисной архитектуры |
+| `call-center-dashboard` (Streamlit) | ✅ работает | Основной публичный дашборд, Phase 1-3 задеплоены |
+| `openwebui` | ⚠️ работает, но без LLM | Сам сервис жив, но настроен на `pipelines` (см. ниже), который не отвечает — чат нефункционален |
+| `Postgres` | ✅ работает | Общая база для Streamlit и сервисной архитектуры |
 | `call-audio` (Bucket) | ✅ работает | Аудио для плеера, S3-совместимо |
-| `api` (FastAPI) | ❌ CRASHED | OOM: `requirements-ml.txt` (torch+whisper+pyannote) не влезает в 1GB RAM Trial-плана Railway |
-| `pipelines` (webui_pipeline) | ❌ FAILED | Та же причина — нужен апгрейд на Hobby-план (48GB/сервис) |
+| `api` (FastAPI) | ✅ работает | После апгрейда на Hobby-план (2026-07-18) — деплоится чисто, без OOM. `GET /trends` проверен end-to-end (Groq) |
+| `pipelines` (webui_pipeline) | ❌ не работает | НЕ из-за RAM — `ghcr.io/open-webui/pipelines:main` несёт несовместимый набор torch/torchvision/torchaudio. Частично почищено (см. `pipelines/Dockerfile`), но осталось необъяснённое расхождение build/runtime — см. NEXT_SESSION.md |
 
-Локально (`docker-compose up`) весь стек, включая `api`/`pipelines`, работает без
-ограничений — блокер чисто в лимитах Trial-плана конкретно на Railway.
+Апгрейд на Railway Hobby-план (2026-07-18) снял RAM-ограничение — `api` и `GET
+/trends` полностью рабочие в облаке. Оставшийся блокер чата — отдельная проблема
+пакетирования в базовом Docker-образе `pipelines`, не RAM.
 
 ## Куда развиваться
 
@@ -324,7 +325,10 @@ Streamlit-дашборд эволюционирует поэтапно в сто
   с датой и счётчиком. Больше про L&D-комплаенс, чем про звонки — низкий приоритет для нас.
 
 **Инфраструктурное:**
-- Апгрейд Railway на Hobby-план — разблокирует `api`/`pipelines` в облаке (сейчас только локально)
+- ~~Апгрейд Railway на Hobby-план~~ — сделано 2026-07-18, `api` разблокирован в облаке
+- Починить `pipelines` (OpenWebUI-чат) — не RAM, а несовместимость torch/torchvision/torchaudio
+  в базовом образе `ghcr.io/open-webui/pipelines:main`. Частично исправлено, есть необъяснённое
+  расхождение build/runtime — см. NEXT_SESSION.md
 - Полнотекстовый поиск по `transcript_text`/резюме (`ILIKE` хватит на текущий объём, `tsvector`+GIN — при росте)
 - Sentry/error-tracking на Streamlit-сервисе — сегфолт pyarrow (см. коммит `9bc92ad`) нашли только по логам постфактум, автоалерт сэкономил бы время
 - Настоящие named-спикеры вместо эвристики "оператор = говорит первым/дольше"
