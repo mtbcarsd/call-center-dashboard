@@ -262,6 +262,11 @@ Postgres-базы (ТЗ не запрещает доп. интерфейсы, т
 
 ## Куда развиваться
 
+📋 Конкретный план на следующую сессию (по шагам, с готовым промтом для старта) —
+[NEXT_SESSION.md](NEXT_SESSION.md). Исходный анализ конкурентов —
+[SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md](SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md) и
+[COMPETITOR_VIDEOS_ANALYSIS.md](COMPETITOR_VIDEOS_ANALYSIS.md).
+
 Streamlit-дашборд эволюционирует поэтапно в сторону возможностей уровня
 специализированных инструментов транскрибации (типа OpenTranscribe), плюс то,
 чего в таких инструментах обычно нет — потому что у нас уже посчитаны 4 независимых
