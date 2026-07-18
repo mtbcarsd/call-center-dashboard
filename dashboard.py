@@ -63,7 +63,7 @@ def load_data():
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
             silence_pct, pause_count, operator_talk_ratio, checklist_json,
-            compliance_json, audio_key, call_type_override, analyzed_at
+            compliance_json, audio_key, call_type_override, operator_name, analyzed_at
         FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
@@ -79,6 +79,17 @@ def set_call_type_override(file_name: str, value: str | None) -> None:
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE call_analysis SET call_type_override = %s WHERE file_name = %s",
+            (value, file_name),
+        )
+    conn.commit()
+    conn.close()
+
+
+def set_operator_name(file_name: str, value: str | None) -> None:
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE call_analysis SET operator_name = %s WHERE file_name = %s",
             (value, file_name),
         )
     conn.commit()
@@ -134,8 +145,8 @@ if selected_status != "Все":
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-tab_analytics, tab_calls, tab_team = st.tabs(
-    ["📊 Аналитика", "📁 Звонки", "👥 Команда разработчиков"]
+tab_analytics, tab_calls, tab_operators, tab_team = st.tabs(
+    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "👥 Команда разработчиков"]
 )
 
 with tab_analytics:
@@ -258,6 +269,8 @@ with tab_calls:
                     st.caption(f"{call['department']} · {urgency_badge.get(call['urgency'], '⚪')} {call['urgency']}")
                     type_icon = "🏷️" if pd.notna(call["call_type_override"]) and call["call_type_override"] else ""
                     st.caption(f"{type_icon} {call['call_type_effective']}".strip())
+                    if pd.notna(call["operator_name"]) and call["operator_name"]:
+                        st.caption(f"🧑‍💼 {call['operator_name']}")
                     score = call["agent_performance_score"]
                     st.progress(
                         (score or 0) / 10,
@@ -333,6 +346,34 @@ with tab_calls:
                             st.session_state[editing_key] = False
                             st.rerun()
 
+                has_operator = pd.notna(row["operator_name"]) and row["operator_name"]
+                operator_editing_key = f"editing_operator_{row['file_name']}"
+                if not st.session_state.get(operator_editing_key):
+                    st.markdown(f"- **Оператор:** {row['operator_name'] if has_operator else '—'}")
+                    if st.button(
+                        "✏️ Указать оператора" if not has_operator else "✏️ Изменить оператора",
+                        key=f"edit_operator_{row['file_name']}",
+                    ):
+                        st.session_state[operator_editing_key] = True
+                        st.rerun()
+                else:
+                    new_operator = st.text_input(
+                        "Имя оператора",
+                        value=str(row["operator_name"]) if has_operator else "",
+                        key=f"new_operator_{row['file_name']}",
+                    )
+                    oc1, oc2 = st.columns(2)
+                    with oc1:
+                        if st.button("💾 Сохранить", key=f"save_operator_{row['file_name']}", use_container_width=True):
+                            set_operator_name(row["file_name"], new_operator)
+                            st.session_state[operator_editing_key] = False
+                            st.cache_data.clear()
+                            st.rerun()
+                    with oc2:
+                        if st.button("Отмена", key=f"cancel_operator_{row['file_name']}", use_container_width=True):
+                            st.session_state[operator_editing_key] = False
+                            st.rerun()
+
                 st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
                 st.markdown(f"- **Срочность:** {row['urgency']}")
                 st.markdown(f"- **Статус:** {row['resolution_status']}")
@@ -404,6 +445,42 @@ with tab_calls:
                             st.markdown(
                                 f"**{label}** _{seg['start_sec']:.0f}–{seg['end_sec']:.0f}с_: {seg['text']}"
                             )
+
+# ── Вкладка операторов: статистика по именованным звонкам ────────────────────
+with tab_operators:
+    st.markdown("### 🧑‍💼 Статистика по операторам")
+
+    named_df = df_all[df_all["operator_name"].notna() & (df_all["operator_name"] != "")]
+    unnamed_count = len(df_all) - len(named_df)
+
+    if named_df.empty:
+        st.info(
+            "Пока ни один звонок не привязан к оператору. Укажите имя оператора "
+            "в деталке звонка (вкладка «📁 Звонки»)."
+        )
+    else:
+        st.caption(
+            f"{len(named_df)} из {len(df_all)} звонков привязаны к оператору"
+            + (f" · {unnamed_count} ещё без имени" if unnamed_count else "")
+        )
+        op_stats = named_df.groupby("operator_name").agg(
+            звонков=("file_name", "count"),
+            оценка=("agent_performance_score", "mean"),
+            клиент=("customer_satisfaction", "mean"),
+        ).round(1).reset_index()
+        op_stats.columns = ["Оператор", "Звонков", "Оценка (чек-лист)", "Удовл. клиента"]
+        op_stats = op_stats.sort_values("Звонков", ascending=False)
+        st.dataframe(
+            op_stats, use_container_width=True, hide_index=True,
+            column_config={
+                "Оценка (чек-лист)": st.column_config.ProgressColumn(
+                    "Оценка (чек-лист)", min_value=0, max_value=10, format="%.1f/10"
+                ),
+                "Удовл. клиента": st.column_config.ProgressColumn(
+                    "Удовл. клиента", min_value=0, max_value=10, format="%.1f/10"
+                ),
+            },
+        )
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
