@@ -45,6 +45,28 @@ CREATE TABLE IF NOT EXISTS call_segments (
     speaker TEXT,
     text TEXT
 );
+
+CREATE TABLE IF NOT EXISTS tags (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS call_tags (
+    file_name TEXT NOT NULL,
+    tag_id INTEGER NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (file_name, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS call_collections (
+    file_name TEXT NOT NULL,
+    collection_id INTEGER NOT NULL REFERENCES collections(id),
+    PRIMARY KEY (file_name, collection_id)
+);
 """
 
 # Колонки, добавленные после первого релиза (тишина/паузы, диаризация, чек-лист).

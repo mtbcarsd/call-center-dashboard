@@ -96,6 +96,87 @@ def set_operator_name(file_name: str, value: str | None) -> None:
     conn.close()
 
 
+# ── Теги и коллекции (обычные many-to-many, без ORM) ──────────────────────────
+# label_table / join_table — фиксированные имена таблиц, задаются только из кода
+# ниже (не пользовательским вводом), поэтому f-string безопасен.
+@st.cache_data(ttl=60)
+def load_label_options(label_table: str) -> list[str]:
+    conn = get_connection()
+    df = pd.read_sql(f"SELECT name FROM {label_table} ORDER BY name", conn)
+    conn.close()
+    return df["name"].tolist()
+
+
+@st.cache_data(ttl=60)
+def load_all_call_labels(join_table: str, fk_col: str, label_table: str) -> pd.DataFrame:
+    conn = get_connection()
+    df = pd.read_sql(
+        f"SELECT j.file_name, l.name FROM {join_table} j "
+        f"JOIN {label_table} l ON l.id = j.{fk_col}",
+        conn,
+    )
+    conn.close()
+    return df
+
+
+def load_call_labels(file_name: str, join_table: str, fk_col: str, label_table: str) -> list[str]:
+    all_labels = load_all_call_labels(join_table, fk_col, label_table)
+    return sorted(all_labels[all_labels["file_name"] == file_name]["name"].tolist())
+
+
+def set_call_labels(file_name: str, names: list[str], join_table: str, fk_col: str, label_table: str) -> None:
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {join_table} WHERE file_name = %s", (file_name,))
+        for name in names:
+            name = name.strip()
+            if not name:
+                continue
+            cur.execute(f"INSERT INTO {label_table} (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (name,))
+            cur.execute(
+                f"INSERT INTO {join_table} (file_name, {fk_col}) SELECT %s, id FROM {label_table} WHERE name = %s",
+                (file_name, name),
+            )
+    conn.commit()
+    conn.close()
+
+
+def render_label_editor(
+    file_name: str, icon: str, title: str, add_placeholder: str,
+    join_table: str, fk_col: str, label_table: str,
+) -> None:
+    st.markdown(f"**{icon} {title}**")
+    all_options = load_label_options(label_table)
+    current = load_call_labels(file_name, join_table, fk_col, label_table)
+    options = sorted(set(all_options) | set(current))
+    # Ключ включает содержимое `current`: после записи в БД (ручной выбор или
+    # кнопка "Добавить") виджет должен пересоздаться с новым default, а не
+    # держать старое выделение — st.multiselect игнорирует `default` на повторных
+    # рендерах, если ключ не изменился.
+    widget_key = f"{label_table}_select_{file_name}_{'|'.join(current)}"
+    selected = st.multiselect(
+        title, options=options, default=current,
+        key=widget_key, label_visibility="collapsed",
+    )
+    if selected != current:
+        set_call_labels(file_name, selected, join_table, fk_col, label_table)
+        st.cache_data.clear()
+        st.rerun()
+
+    new_col1, new_col2 = st.columns([3, 1])
+    with new_col1:
+        new_label = st.text_input(
+            title, key=f"{label_table}_new_{file_name}",
+            label_visibility="collapsed", placeholder=add_placeholder,
+        )
+    with new_col2:
+        if st.button("➕ Добавить", key=f"{label_table}_add_{file_name}", use_container_width=True):
+            if new_label.strip():
+                set_call_labels(file_name, current + [new_label.strip()], join_table, fk_col, label_table)
+                st.cache_data.clear()
+                st.rerun()
+
+
 @st.cache_data(ttl=60)
 def load_segments(file_name: str) -> pd.DataFrame:
     conn = get_connection()
@@ -128,11 +209,19 @@ selected_urgency = st.sidebar.selectbox("Срочность", urgency_options)
 status_options = ["Все"] + sorted(df_all["resolution_status"].dropna().unique().tolist())
 selected_status = st.sidebar.selectbox("Статус", status_options)
 
+all_call_tags = load_all_call_labels("call_tags", "tag_id", "tags")
+tag_options = ["Все"] + sorted(all_call_tags["name"].unique().tolist())
+selected_tag = st.sidebar.selectbox("Тег", tag_options)
+
+all_call_collections = load_all_call_labels("call_collections", "collection_id", "collections")
+collection_options = ["Все"] + sorted(all_call_collections["name"].unique().tolist())
+selected_collection = st.sidebar.selectbox("Коллекция", collection_options)
+
 st.sidebar.markdown("---")
 if st.sidebar.button("🔄 Обновить данные"):
     st.cache_data.clear()
     st.rerun()
-st.sidebar.caption("v1.4 · 2026-07-04")
+st.sidebar.caption("v1.5 · 2026-07-18")
 
 # ── Фильтрация ─────────────────────────────────────────────────────────────────
 df = df_all.copy()
@@ -142,6 +231,12 @@ if selected_urgency != "Все":
     df = df[df["urgency"] == selected_urgency]
 if selected_status != "Все":
     df = df[df["resolution_status"] == selected_status]
+if selected_tag != "Все":
+    tagged_files = all_call_tags[all_call_tags["name"] == selected_tag]["file_name"]
+    df = df[df["file_name"].isin(tagged_files)]
+if selected_collection != "Все":
+    collected_files = all_call_collections[all_call_collections["name"] == selected_collection]["file_name"]
+    df = df[df["file_name"].isin(collected_files)]
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
@@ -271,6 +366,9 @@ with tab_calls:
                     st.caption(f"{type_icon} {call['call_type_effective']}".strip())
                     if pd.notna(call["operator_name"]) and call["operator_name"]:
                         st.caption(f"🧑‍💼 {call['operator_name']}")
+                    card_tags = load_call_labels(call["file_name"], "call_tags", "tag_id", "tags")
+                    if card_tags:
+                        st.caption(f"🔖 {', '.join(card_tags)}")
                     score = call["agent_performance_score"]
                     st.progress(
                         (score or 0) / 10,
@@ -373,6 +471,15 @@ with tab_calls:
                         if st.button("Отмена", key=f"cancel_operator_{row['file_name']}", use_container_width=True):
                             st.session_state[operator_editing_key] = False
                             st.rerun()
+
+                render_label_editor(
+                    row["file_name"], "🔖", "Теги", "Новый тег...",
+                    "call_tags", "tag_id", "tags",
+                )
+                render_label_editor(
+                    row["file_name"], "📦", "Коллекции", "Новая коллекция...",
+                    "call_collections", "collection_id", "collections",
+                )
 
                 st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
                 st.markdown(f"- **Срочность:** {row['urgency']}")
