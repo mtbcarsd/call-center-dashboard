@@ -263,8 +263,8 @@ if selected_collection != "Все":
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-tab_analytics, tab_calls, tab_operators, tab_rating, tab_team = st.tabs(
-    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "🏆 Рейтинг", "👥 Команда разработчиков"]
+tab_analytics, tab_calls, tab_operators, tab_rating, tab_compliance, tab_team = st.tabs(
+    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "🏆 Рейтинг", "🛡️ Compliance", "👥 Команда разработчиков"]
 )
 
 with tab_analytics:
@@ -703,6 +703,82 @@ with tab_rating:
                     **_checklist_pass_rates(op_checklists),
                 })
             st.dataframe(pd.DataFrame(op_rows), use_container_width=True, hide_index=True)
+
+# ── Вкладка Compliance ─────────────────────────────────────────────────────────
+def _parse_compliance(raw):
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return {"passed": bool(parsed.get("passed", True)), "issues": parsed.get("issues") or []}
+
+
+with tab_compliance:
+    st.markdown("### 🛡️ Compliance")
+
+    compliance_by_file = {
+        file_name: parsed
+        for file_name, raw in zip(df_all["file_name"], df_all["compliance_json"])
+        if (parsed := _parse_compliance(raw)) is not None
+    }
+
+    if not compliance_by_file:
+        st.info("Нет данных compliance-проверки ни по одному звонку.")
+    else:
+        total = len(compliance_by_file)
+        violations = {fn: c for fn, c in compliance_by_file.items() if not c["passed"]}
+        pass_rate = (total - len(violations)) / total * 100
+
+        c1, c2 = st.columns(2)
+        c1.metric("Проверено звонков", total)
+        c2.metric("Без нарушений", f"{pass_rate:.0f}%", f"{len(violations)} с нарушениями" if violations else None)
+
+        st.markdown("---")
+        st.markdown("#### Звонки с нарушениями")
+        if not violations:
+            st.success("✅ Нарушений не найдено ни в одном проверенном звонке.")
+        else:
+            topics_by_file = dict(zip(df_all["file_name"], df_all["call_topic"]))
+            for file_name, comp in violations.items():
+                with st.container(border=True):
+                    st.markdown(f"**{topics_by_file.get(file_name, file_name)}**")
+                    for issue in comp["issues"]:
+                        st.markdown(f"- {issue}")
+
+        st.markdown("---")
+        st.markdown("#### По операторам")
+        named_df = df_all[df_all["operator_name"].notna() & (df_all["operator_name"] != "")]
+        if named_df.empty:
+            st.info(
+                "Пока ни один звонок не привязан к оператору — разбивка по операторам "
+                "появится, когда имя будет указано хотя бы на одном звонке "
+                "(вкладка «📁 Звонки»)."
+            )
+        else:
+            op_rows = []
+            for operator, group in named_df.groupby("operator_name"):
+                op_compliance = [compliance_by_file[fn] for fn in group["file_name"] if fn in compliance_by_file]
+                if not op_compliance:
+                    continue
+                op_total = len(op_compliance)
+                op_passed = sum(1 for c in op_compliance if c["passed"])
+                op_rows.append({
+                    "Оператор": operator, "Звонков": op_total,
+                    "Без нарушений, %": op_passed / op_total * 100,
+                })
+            if op_rows:
+                st.dataframe(
+                    pd.DataFrame(op_rows), use_container_width=True, hide_index=True,
+                    column_config={
+                        "Без нарушений, %": st.column_config.ProgressColumn(
+                            "Без нарушений, %", min_value=0, max_value=100, format="%.0f%%"
+                        ),
+                    },
+                )
+            else:
+                st.info("У звонков с проставленным оператором нет данных compliance-проверки.")
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
