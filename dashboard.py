@@ -188,6 +188,29 @@ def load_segments(file_name: str) -> pd.DataFrame:
     conn.close()
     return df
 
+
+@st.cache_data(ttl=60)
+def load_comments(file_name: str) -> pd.DataFrame:
+    conn = get_connection()
+    df = pd.read_sql(
+        "SELECT author, text, created_at FROM comments "
+        "WHERE file_name = %s ORDER BY created_at",
+        conn, params=(file_name,),
+    )
+    conn.close()
+    return df
+
+
+def add_comment(file_name: str, author: str, text: str) -> None:
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO comments (file_name, author, text) VALUES (%s, %s, %s)",
+            (file_name, author, text),
+        )
+    conn.commit()
+    conn.close()
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.title("📞 Call Center Analytics")
 username = st.session_state.get("username", "")
@@ -552,6 +575,29 @@ with tab_calls:
                             st.markdown(
                                 f"**{label}** _{seg['start_sec']:.0f}–{seg['end_sec']:.0f}с_: {seg['text']}"
                             )
+
+                st.markdown("---")
+                st.markdown("**💬 Комментарии**")
+                comments_df = load_comments(row["file_name"])
+                if comments_df.empty:
+                    st.caption("Пока нет комментариев.")
+                else:
+                    for _, comment in comments_df.iterrows():
+                        st.markdown(f"**{comment['author'] or 'Аноним'}** · _{comment['created_at']:%d.%m.%Y %H:%M}_")
+                        st.markdown(comment["text"])
+                        st.markdown("")
+
+                # Ключ включает число уже сохранённых комментариев: после отправки
+                # виджет должен пересоздаться пустым, а не хранить старый текст —
+                # тот же приём, что и у мультиселектов тегов/коллекций выше.
+                new_comment = st.text_area(
+                    "Новый комментарий", key=f"new_comment_{row['file_name']}_{len(comments_df)}"
+                )
+                if st.button("💬 Добавить комментарий", key=f"add_comment_{row['file_name']}"):
+                    if new_comment.strip():
+                        add_comment(row["file_name"], st.session_state.get("username", ""), new_comment.strip())
+                        st.cache_data.clear()
+                        st.rerun()
 
 # ── Вкладка операторов: статистика по именованным звонкам ────────────────────
 with tab_operators:

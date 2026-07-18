@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS call_collections (
     collection_id INTEGER NOT NULL REFERENCES collections(id),
     PRIMARY KEY (file_name, collection_id)
 );
+
+CREATE TABLE IF NOT EXISTS comments (
+    id SERIAL PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    author TEXT,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Колонки, добавленные после первого релиза (тишина/паузы, диаризация, чек-лист).
