@@ -63,12 +63,26 @@ def load_data():
             agent_performance_score, customer_satisfaction,
             escalation_flag, key_topics, transcript_text,
             silence_pct, pause_count, operator_talk_ratio, checklist_json,
-            compliance_json, audio_key, analyzed_at
+            compliance_json, audio_key, call_type_override, analyzed_at
         FROM call_analysis
         ORDER BY department, call_topic
     """, conn)
     conn.close()
+    df["call_type_effective"] = df["call_type_override"].where(
+        df["call_type_override"].notna() & (df["call_type_override"] != ""), df["call_type"]
+    )
     return df
+
+
+def set_call_type_override(file_name: str, value: str | None) -> None:
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE call_analysis SET call_type_override = %s WHERE file_name = %s",
+            (value, file_name),
+        )
+    conn.commit()
+    conn.close()
 
 
 @st.cache_data(ttl=60)
@@ -205,7 +219,7 @@ with tab_analytics:
     # ── Таблица звонков ───────────────────────────────────────────────────────
     st.markdown("### Все звонки")
     display_df = df[[
-        "department", "call_topic", "call_type", "urgency",
+        "department", "call_topic", "call_type_effective", "urgency",
         "resolution_status", "agent_performance_score", "customer_satisfaction",
         "escalation_flag"
     ]].copy()
@@ -242,6 +256,8 @@ with tab_calls:
                 with col, st.container(border=True):
                     st.markdown(f"**{call['call_topic']}**")
                     st.caption(f"{call['department']} · {urgency_badge.get(call['urgency'], '⚪')} {call['urgency']}")
+                    type_icon = "🏷️" if pd.notna(call["call_type_override"]) and call["call_type_override"] else ""
+                    st.caption(f"{type_icon} {call['call_type_effective']}".strip())
                     score = call["agent_performance_score"]
                     st.progress(
                         (score or 0) / 10,
@@ -276,7 +292,47 @@ with tab_calls:
             with d1:
                 st.markdown("**Параметры звонка**")
                 st.markdown(f"- **Отдел:** {row['department']}")
-                st.markdown(f"- **Тип:** {row['call_type']}")
+
+                has_override = pd.notna(row["call_type_override"]) and row["call_type_override"]
+                editing_key = f"editing_type_{row['file_name']}"
+                if has_override:
+                    st.markdown(f"- **Тип:** {row['call_type_override']} 🏷️")
+                    st.caption(f"Подтверждено вручную · AI предложил: {row['call_type']}")
+                    if st.button("✏️ Изменить", key=f"redo_{row['file_name']}"):
+                        st.session_state[editing_key] = True
+                        st.rerun()
+                else:
+                    st.markdown(f"- **Тип:** {row['call_type']} _(AI, не подтверждено)_")
+                    if not st.session_state.get(editing_key):
+                        bc1, bc2 = st.columns(2)
+                        with bc1:
+                            if st.button("✅ Подтвердить", key=f"confirm_{row['file_name']}", use_container_width=True):
+                                set_call_type_override(row["file_name"], row["call_type"])
+                                st.cache_data.clear()
+                                st.rerun()
+                        with bc2:
+                            if st.button("❌ Исправить", key=f"reject_{row['file_name']}", use_container_width=True):
+                                st.session_state[editing_key] = True
+                                st.rerun()
+
+                if st.session_state.get(editing_key):
+                    new_type = st.text_input(
+                        "Новая категория",
+                        value=str(row["call_type_effective"]),
+                        key=f"new_type_{row['file_name']}",
+                    )
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        if st.button("💾 Сохранить", key=f"save_type_{row['file_name']}", use_container_width=True):
+                            set_call_type_override(row["file_name"], new_type)
+                            st.session_state[editing_key] = False
+                            st.cache_data.clear()
+                            st.rerun()
+                    with ec2:
+                        if st.button("Отмена", key=f"cancel_type_{row['file_name']}", use_container_width=True):
+                            st.session_state[editing_key] = False
+                            st.rerun()
+
                 st.markdown(f"- **Намерение клиента:** {row['customer_intent']}")
                 st.markdown(f"- **Срочность:** {row['urgency']}")
                 st.markdown(f"- **Статус:** {row['resolution_status']}")
