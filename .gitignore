@@ -5,6 +5,7 @@ __pycache__/
 call_center.db
 .streamlit/secrets.toml
 results_cache.json
+new_calls_cache.json
 *.wav
 !test_data/*.wav
 *.mp4
