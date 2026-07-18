@@ -263,8 +263,8 @@ if selected_collection != "Все":
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-tab_analytics, tab_calls, tab_operators, tab_team = st.tabs(
-    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "👥 Команда разработчиков"]
+tab_analytics, tab_calls, tab_operators, tab_rating, tab_team = st.tabs(
+    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "🏆 Рейтинг", "👥 Команда разработчиков"]
 )
 
 with tab_analytics:
@@ -634,6 +634,75 @@ with tab_operators:
                 ),
             },
         )
+
+# ── Вкладка рейтинга: разбивка чек-листа по пунктам ───────────────────────────
+def _parse_checklist(raw):
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _checklist_pass_rates(checklists: list[dict]) -> dict[str, float | None]:
+    rates = {}
+    for item in CHECKLIST:
+        key = item["key"]
+        results = [c[key] for c in checklists if key in c]
+        rates[item["label"]] = (sum(1 for r in results if r) / len(results) * 100) if results else None
+    return rates
+
+
+with tab_rating:
+    st.markdown("### 🏆 Рейтинг по чек-листу")
+    st.caption(f"Разбивка по {len(CHECKLIST)} пунктам чек-листа, по всем {len(df_all)} звонкам")
+
+    all_checklists = [c for c in df_all["checklist_json"].apply(_parse_checklist) if c]
+
+    if not all_checklists:
+        st.info("Нет данных чек-листа ни по одному звонку.")
+    else:
+        overall_rates = _checklist_pass_rates(all_checklists)
+        rating_df = pd.DataFrame([
+            {"Пункт": item["label"], "Вес": item["weight"], "Прохождение, %": overall_rates[item["label"]]}
+            for item in CHECKLIST
+        ]).sort_values("Прохождение, %", ascending=True)
+
+        worst = rating_df.iloc[0]
+        if pd.notna(worst["Прохождение, %"]) and worst["Прохождение, %"] < 50:
+            st.warning(
+                f"⚠️ Худший пункт — «{worst['Пункт']}»: проходит только "
+                f"{worst['Прохождение, %']:.0f}% звонков. Стоит обратить внимание."
+            )
+
+        st.dataframe(
+            rating_df, use_container_width=True, hide_index=True,
+            column_config={
+                "Прохождение, %": st.column_config.ProgressColumn(
+                    "Прохождение, %", min_value=0, max_value=100, format="%.0f%%"
+                ),
+            },
+        )
+
+        st.markdown("---")
+        st.markdown("#### По операторам")
+        named_df = df_all[df_all["operator_name"].notna() & (df_all["operator_name"] != "")]
+        if named_df.empty:
+            st.info(
+                "Пока ни один звонок не привязан к оператору — разбивка по операторам "
+                "появится, когда имя будет указано хотя бы на одном звонке "
+                "(вкладка «📁 Звонки»)."
+            )
+        else:
+            op_rows = []
+            for operator, group in named_df.groupby("operator_name"):
+                op_checklists = [c for c in group["checklist_json"].apply(_parse_checklist) if c]
+                op_rows.append({
+                    "Оператор": operator, "Звонков": len(group),
+                    **_checklist_pass_rates(op_checklists),
+                })
+            st.dataframe(pd.DataFrame(op_rows), use_container_width=True, hide_index=True)
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
