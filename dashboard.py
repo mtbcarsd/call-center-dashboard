@@ -4,10 +4,24 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import hashlib
+import os
+
+import requests
 
 from db import get_connection
 from checklist import CHECKLIST
 from storage import presigned_url
+
+# Тренды считаются на стороне сервиса `api` (агент agents/trends.py, ходит в Groq) —
+# дашборду достаточно лёгкого HTTP-клиента, без ML-зависимостей.
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api-production-95c7e.up.railway.app")
+
+
+@st.cache_data(ttl=300)
+def fetch_trends(limit: int) -> dict:
+    resp = requests.get(f"{API_BASE_URL}/trends", params={"limit": limit}, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
 
 st.set_page_config(
     page_title="Call Center Analytics",
@@ -274,8 +288,8 @@ if selected_collection != "Все":
 
 # ── Заголовок и вкладки ───────────────────────────────────────────────────────
 st.title("📞 Аналитика колл-центра")
-tab_analytics, tab_calls, tab_operators, tab_rating, tab_compliance, tab_team = st.tabs(
-    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "🏆 Рейтинг", "🛡️ Compliance", "👥 Команда разработчиков"]
+tab_analytics, tab_calls, tab_operators, tab_rating, tab_compliance, tab_trends, tab_team = st.tabs(
+    ["📊 Аналитика", "📁 Звонки", "🧑‍💼 Операторы", "🏆 Рейтинг", "🛡️ Compliance", "📈 Тренды", "👥 Команда разработчиков"]
 )
 
 with tab_analytics:
@@ -827,6 +841,44 @@ with tab_compliance:
                 )
             else:
                 st.info("У звонков с проставленным оператором нет данных compliance-проверки.")
+
+# ── Вкладка трендов: LLM-агент на стороне сервиса `api` ───────────────────────
+with tab_trends:
+    st.markdown("### 📈 Тренды")
+    st.caption(
+        "LLM-агент анализирует резюме и темы последних звонков, ищет повторяющиеся "
+        "паттерны и узкие места. Считается на сервисе `api` (LLM — Groq), дашборд "
+        "просто дёргает `GET /trends`."
+    )
+
+    max_limit = max(len(df_all), 1)
+    limit = st.slider(
+        "Сколько последних звонков анализировать",
+        min_value=1, max_value=max_limit, value=min(10, max_limit),
+    )
+
+    if st.button("🔄 Получить тренды"):
+        fetch_trends.clear()
+
+    try:
+        trends_result = fetch_trends(limit)
+    except requests.RequestException as e:
+        st.error(f"Сервис `api` недоступен: {e}")
+    else:
+        trends = trends_result.get("trends") or []
+        recommendations = trends_result.get("recommendations") or []
+
+        if not trends and not recommendations:
+            st.info("Недостаточно данных для выводов по выбранным звонкам.")
+        else:
+            if trends:
+                st.markdown("**Найденные паттерны:**")
+                for t in trends:
+                    st.markdown(f"- {t}")
+            if recommendations:
+                st.markdown("**Рекомендации для супервайзера:**")
+                for r in recommendations:
+                    st.success(f"💡 {r}")
 
 # ── Вкладка команды ────────────────────────────────────────────────────────────
 with tab_team:
