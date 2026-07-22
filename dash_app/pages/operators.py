@@ -6,6 +6,7 @@ import dash
 import dash_ag_grid as dag
 from dash import html
 
+from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.data import load_calls
 
@@ -22,7 +23,7 @@ _SCORE_FMT = {"function": "params.value != null ? params.value.toFixed(1) + '/10
 
 
 def layout():
-    df = load_calls()
+    df = load_calls(department=get_current_department())
     named_df = df[df["operator_name"].notna() & (df["operator_name"] != "")]
     unnamed_count = len(df) - len(named_df)
 

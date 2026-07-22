@@ -6,6 +6,7 @@ import dash
 import dash_ag_grid as dag
 from dash import html
 
+from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls, parse_compliance
@@ -14,7 +15,7 @@ dash.register_page(__name__, path="/compliance", name="Compliance", order=3)
 
 
 def layout():
-    df = load_calls()
+    df = load_calls(department=get_current_department())
 
     compliance_by_file = {}
     for _, row in df.iterrows():

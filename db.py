@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS comments (
     text TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    display_name TEXT,
+    department TEXT,
+    operator_match_name TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Колонки, добавленные после первого релиза (тишина/паузы, диаризация, чек-лист).

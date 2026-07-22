@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import dash_ag_grid as dag
 from dash import html, dcc
 
+from dash_app.auth import get_current_department
 from dash_app.colors import COLORS, CHART_FONT
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls
@@ -67,7 +68,7 @@ def _section_h(text: str):
 # ── layout() — вызывается Dash'ем при каждом переходе на страницу ────────────
 
 def layout():
-    df = load_calls()
+    df = load_calls(department=get_current_department())
 
     avg_agent = df["agent_performance_score"].mean()
     avg_client = df["customer_satisfaction"].mean()

@@ -12,23 +12,30 @@ from db import get_connection
 from checklist import CHECKLIST
 
 
-def load_calls() -> pd.DataFrame:
+def load_calls(department: str | None = None) -> pd.DataFrame:
+    """Загружает звонки из БД. Если department задан — фильтрует на сервере (для manager)."""
+    _base_sql = """
+        SELECT
+            file_name, department, call_topic, call_summary,
+            call_type, call_type_override, customer_intent,
+            urgency, resolution_status,
+            agent_performance_score, customer_satisfaction,
+            escalation_flag, operator_name, call_datetime, analyzed_at,
+            silence_pct, checklist_json, compliance_json, qa_score
+        FROM call_analysis
+        {where}
+        ORDER BY COALESCE(call_datetime, analyzed_at) DESC NULLS LAST
+    """
     conn = get_connection()
     try:
-        df = pd.read_sql(
-            """
-            SELECT
-                file_name, department, call_topic, call_summary,
-                call_type, call_type_override, customer_intent,
-                urgency, resolution_status,
-                agent_performance_score, customer_satisfaction,
-                escalation_flag, operator_name, call_datetime, analyzed_at,
-                silence_pct, checklist_json, compliance_json, qa_score
-            FROM call_analysis
-            ORDER BY COALESCE(call_datetime, analyzed_at) DESC NULLS LAST
-            """,
-            conn,
-        )
+        if department:
+            df = pd.read_sql(
+                _base_sql.format(where="WHERE department = %(dept)s"),
+                conn,
+                params={"dept": department},
+            )
+        else:
+            df = pd.read_sql(_base_sql.format(where=""), conn)
     finally:
         conn.close()
     df["call_type_effective"] = df["call_type_override"].where(

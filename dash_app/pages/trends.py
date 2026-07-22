@@ -9,6 +9,7 @@ import dash
 import requests
 from dash import html, dcc, callback, Input, Output, State
 
+from dash_app.auth import get_current_department, get_current_user
 from dash_app.colors import COLORS
 from dash_app.data import load_calls
 from dash_app.trends_logic import render_trends_result
@@ -21,8 +22,24 @@ _API_BASE = os.environ.get("API_BASE_URL", "https://api-production-95c7e.up.rail
 # ── Layout ────────────────────────────────────────────────────────────────────
 
 def layout():
-    df = load_calls()
+    dept = get_current_department()
+    df = load_calls(department=dept)
     max_limit = max(len(df), 1)
+
+    dept_note = []
+    if dept:
+        dept_note = [html.Div(
+            f"⚠️ Тренды строятся по всем отделам — фильтрация по отделу «{dept}» в режиме аналитики трендов недоступна.",
+            style={
+                "background": COLORS["warning_light"],
+                "color": COLORS["warning"],
+                "border": f"1px solid {COLORS['warning']}",
+                "borderRadius": "0.5rem",
+                "padding": "0.625rem 1rem",
+                "fontSize": "0.8125rem",
+                "marginBottom": "1.25rem",
+            },
+        )]
 
     return html.Div([
         html.H2(
@@ -34,6 +51,7 @@ def layout():
             "и узкие места. Запрос идёт к сервису api (LLM — Groq).",
             style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
         ),
+        *dept_note,
         html.Div(
             [
                 html.Div(

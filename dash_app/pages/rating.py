@@ -8,6 +8,7 @@ import dash_ag_grid as dag
 from dash import html
 
 from checklist import CHECKLIST
+from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.data import load_calls, parse_checklist, checklist_pass_rates
 
@@ -24,7 +25,7 @@ _PCT_FMT = {"function": "params.value != null ? params.value.toFixed(0) + '%' : 
 
 
 def layout():
-    df = load_calls()
+    df = load_calls(department=get_current_department())
     all_checklists = [c for c in df["checklist_json"].apply(parse_checklist) if c]
 
     if not all_checklists:
