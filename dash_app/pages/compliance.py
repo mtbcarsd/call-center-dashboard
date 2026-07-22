@@ -8,6 +8,8 @@ from dash import html
 
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
+from dash_app.components.cell_format import pct_cell
+from dash_app.components.gauge_tile import gauge_tile
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls, parse_compliance
 
@@ -43,12 +45,7 @@ def layout():
     kpi_row = html.Div(
         [
             stat_tile("Проверено звонков", str(total), accent=COLORS["primary_bright"]),
-            stat_tile(
-                "Без нарушений",
-                f"{pass_rate:.0f}%",
-                subtitle=f"{len(violations)} с нарушениями" if violations else "Всё в порядке",
-                accent=COLORS["success"] if not violations else COLORS["danger"],
-            ),
+            gauge_tile("Без нарушений", pass_rate, good=80, warn=60),
         ],
         style={"display": "flex", "gap": "1rem", "marginBottom": "1.5rem"},
     )
@@ -66,30 +63,27 @@ def layout():
             },
         )
     else:
-        cards = []
-        for fn, comp in violations.items():
-            cards.append(html.Div(
-                [
-                    html.Div(
-                        comp["topic"],
-                        style={"fontWeight": "600", "color": COLORS["text_primary"],
-                               "marginBottom": "0.35rem"},
-                    ),
-                    html.Ul(
-                        [html.Li(issue, style={"marginBottom": "0.2rem"}) for issue in comp["issues"]],
-                        style={"margin": "0", "paddingLeft": "1.25rem",
-                               "color": COLORS["danger"], "fontSize": "0.875rem"},
-                    ),
-                ],
-                style={
-                    "background": "#FFF5F5",
-                    "borderLeft": f"4px solid {COLORS['danger']}",
-                    "padding": "0.875rem 1rem",
-                    "borderRadius": "0.375rem",
-                    "marginBottom": "0.75rem",
-                },
-            ))
-        violations_block = html.Div(cards)
+        violation_rows = [
+            {
+                "Тема": comp["topic"],
+                "Оператор": comp["operator"] or "—",
+                "Нарушения": "; ".join(comp["issues"]),
+            }
+            for comp in violations.values()
+        ]
+        violations_block = dag.AgGrid(
+            rowData=violation_rows,
+            columnDefs=[
+                {"headerName": "Тема", "field": "Тема", "flex": 1.5},
+                {"headerName": "Оператор", "field": "Оператор", "flex": 1.5},
+                {"headerName": "Нарушения", "field": "Нарушения", "flex": 4,
+                 "cellStyle": {"color": COLORS["danger"]}, "wrapText": True, "autoHeight": True},
+            ],
+            defaultColDef={"sortable": True, "filter": True, "resizable": True},
+            dashGridOptions={"pagination": True, "paginationPageSize": 10},
+            style={"height": "420px"},
+            className="ag-theme-alpine",
+        )
 
     # ── По операторам ─────────────────────────────────────────────────────────
     named_df = df[df["operator_name"].notna() & (df["operator_name"] != "")]
@@ -109,22 +103,13 @@ def layout():
             })
 
         if op_rows:
-            pct_style = {
-                "styleConditions": [
-                    {"condition": "params.value >= 80", "style": {"color": "#15803D", "fontWeight": "600"}},
-                    {"condition": "params.value >= 60 && params.value < 80",
-                     "style": {"color": "#D97706", "fontWeight": "500"}},
-                    {"condition": "params.value < 60", "style": {"color": "#B91C1C", "fontWeight": "600"}},
-                ]
-            }
             op_grid = dag.AgGrid(
                 rowData=op_rows,
                 columnDefs=[
                     {"headerName": "Оператор", "field": "Оператор", "flex": 2},
                     {"headerName": "Звонков", "field": "Звонков", "flex": 1},
                     {"headerName": "Без нарушений (%)", "field": "Без нарушений (%)", "flex": 1.5,
-                     "valueFormatter": {"function": "params.value.toFixed(0) + '%'"},
-                     "cellStyle": pct_style},
+                     **pct_cell(good=80, warn=60)},
                 ],
                 defaultColDef={"sortable": True},
                 style={"height": "280px"},

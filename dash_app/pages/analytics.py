@@ -13,20 +13,14 @@ from dash import html, dcc
 
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS, CHART_FONT
+from dash_app.components.cell_format import score_cell
+from dash_app.components.gauge_tile import gauge_tile
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls
 
 dash.register_page(__name__, path="/", name="Аналитика", order=0)
 
 # ── Стили ag-grid ────────────────────────────────────────────────────────────
-
-_SCORE_CELL_STYLE = {
-    "styleConditions": [
-        {"condition": "params.value >= 7", "style": {"color": "#15803D", "fontWeight": "600"}},
-        {"condition": "params.value >= 5 && params.value < 7", "style": {"color": "#D97706", "fontWeight": "500"}},
-        {"condition": "params.value != null && params.value < 5", "style": {"color": "#B91C1C", "fontWeight": "600"}},
-    ]
-}
 
 _URGENCY_CELL_STYLE = {
     "styleConditions": [
@@ -35,8 +29,6 @@ _URGENCY_CELL_STYLE = {
         {"condition": "params.value === 'low'", "style": {"color": "#15803D", "fontWeight": "600"}},
     ]
 }
-
-_SCORE_FMT = {"function": "params.value != null ? Number(params.value).toFixed(1) + '/10' : '—'"}
 
 
 # ── Вспомогательные компоненты ───────────────────────────────────────────────
@@ -90,7 +82,7 @@ def layout():
                 f"{avg_client:.1f}/10" if pd.notna(avg_client) else "—",
                 accent=COLORS["kpi_client"],
             ),
-            stat_tile("Решено", f"{resolved_pct:.0f}%", accent=COLORS["kpi_resolved"]),
+            gauge_tile("Решено", resolved_pct if not df.empty else None, good=70, warn=50),
             stat_tile("Эскалаций", str(escalated), accent=COLORS["kpi_escalated"]),
             stat_tile(
                 "Тишина в диалоге",
@@ -101,16 +93,25 @@ def layout():
         style={"display": "flex", "gap": "1rem", "marginBottom": "1.5rem", "flexWrap": "wrap"},
     )
 
-    # ── График 1: оценки по темам ─────────────────────────────────────────────
+    # ── График 1: средние оценки по темам ─────────────────────────────────────
+    # Агрегируем по теме, а не рисуем по бару на звонок — при росте базы
+    # (20 → 340+ звонков) сырой per-call bar chart превращается в нечитаемую
+    # полосу из перекрывающихся баров.
+    topic_stats = df.groupby("call_topic").agg(
+        Оператор=("agent_performance_score", "mean"),
+        Клиент=("customer_satisfaction", "mean"),
+        Звонков=("call_topic", "count"),
+    ).round(1).sort_values("Звонков", ascending=False)
+
     fig_scores = go.Figure()
     if not df.empty:
         fig_scores.add_trace(go.Bar(
-            name="Оператор", x=df["call_topic"],
-            y=df["agent_performance_score"], marker_color=COLORS["operator"],
+            name="Оператор", x=topic_stats.index,
+            y=topic_stats["Оператор"], marker_color=COLORS["operator"],
         ))
         fig_scores.add_trace(go.Bar(
-            name="Клиент", x=df["call_topic"],
-            y=df["customer_satisfaction"], marker_color=COLORS["client"],
+            name="Клиент", x=topic_stats.index,
+            y=topic_stats["Клиент"], marker_color=COLORS["client"],
         ))
     fig_scores.update_layout(
         barmode="group",
@@ -163,12 +164,8 @@ def layout():
         columnDefs=[
             {"headerName": "Отдел", "field": "Отдел", "flex": 2},
             {"headerName": "Звонков", "field": "Звонков", "flex": 1},
-            {"headerName": "Оператор", "field": "Оператор", "flex": 1,
-             "valueFormatter": {"function": "params.value != null ? params.value.toFixed(1) : '—'"},
-             "cellStyle": _SCORE_CELL_STYLE},
-            {"headerName": "Клиент", "field": "Клиент", "flex": 1,
-             "valueFormatter": {"function": "params.value != null ? params.value.toFixed(1) : '—'"},
-             "cellStyle": _SCORE_CELL_STYLE},
+            {"headerName": "Оператор", "field": "Оператор", "flex": 1, **score_cell()},
+            {"headerName": "Клиент", "field": "Клиент", "flex": 1, **score_cell()},
         ],
         defaultColDef={"sortable": True},
         style={"height": f"{min(len(dept_stats) * 42 + 52, 180)}px"},
@@ -196,7 +193,7 @@ def layout():
     charts_row = html.Div(
         [
             _card(
-                [_section_h("Оценки по звонкам"),
+                [_section_h("Средние оценки по темам"),
                  dcc.Graph(figure=fig_scores, config={"displayModeBar": False})],
                 {"flex": "2", "minWidth": "300px"},
             ),
@@ -238,10 +235,8 @@ def layout():
             {"headerName": "Срочность", "field": "Срочность", "flex": 1,
              "cellStyle": _URGENCY_CELL_STYLE},
             {"headerName": "Статус", "field": "Статус", "flex": 1},
-            {"headerName": "Оператор", "field": "Оператор", "flex": 1,
-             "valueFormatter": _SCORE_FMT, "cellStyle": _SCORE_CELL_STYLE},
-            {"headerName": "Клиент", "field": "Клиент", "flex": 1,
-             "valueFormatter": _SCORE_FMT, "cellStyle": _SCORE_CELL_STYLE},
+            {"headerName": "Оператор", "field": "Оператор", "flex": 1, **score_cell()},
+            {"headerName": "Клиент", "field": "Клиент", "flex": 1, **score_cell()},
             {"headerName": "Эскалация", "field": "Эскалация", "flex": 1},
         ],
         defaultColDef={"sortable": True, "filter": True, "resizable": True},

@@ -8,18 +8,10 @@ from dash import html
 
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
+from dash_app.components.cell_format import score_cell
 from dash_app.data import load_calls
 
 dash.register_page(__name__, path="/operators", name="Операторы", order=1)
-
-_SCORE_STYLE = {
-    "styleConditions": [
-        {"condition": "params.value >= 7", "style": {"color": "#15803D", "fontWeight": "600"}},
-        {"condition": "params.value >= 5 && params.value < 7", "style": {"color": "#D97706", "fontWeight": "500"}},
-        {"condition": "params.value != null && params.value < 5", "style": {"color": "#B91C1C", "fontWeight": "600"}},
-    ]
-}
-_SCORE_FMT = {"function": "params.value != null ? params.value.toFixed(1) + '/10' : '—'"}
 
 
 def layout():
@@ -43,7 +35,7 @@ def layout():
         QA=("qa_score", "mean"),
         Клиент=("customer_satisfaction", "mean"),
     ).round(2).reset_index()
-    op_stats.columns = ["Оператор", "Звонков", "Оценка (чек-лист)", "QA-оценка", "Удовл. клиента"]
+    op_stats.columns = ["Оператор", "Звонков", "Оценка (чек-лист)", "QA-оценка", "Удовл клиента"]
     op_stats = op_stats.sort_values("Звонков", ascending=False)
 
     grid = dag.AgGrid(
@@ -51,12 +43,9 @@ def layout():
         columnDefs=[
             {"headerName": "Оператор", "field": "Оператор", "flex": 2},
             {"headerName": "Звонков", "field": "Звонков", "flex": 1, "sort": "desc"},
-            {"headerName": "Оценка (чек-лист)", "field": "Оценка (чек-лист)", "flex": 1.5,
-             "valueFormatter": _SCORE_FMT, "cellStyle": _SCORE_STYLE},
-            {"headerName": "QA-оценка", "field": "QA-оценка", "flex": 1,
-             "valueFormatter": _SCORE_FMT, "cellStyle": _SCORE_STYLE},
-            {"headerName": "Удовл. клиента", "field": "Удовл. клиента", "flex": 1.5,
-             "valueFormatter": _SCORE_FMT, "cellStyle": _SCORE_STYLE},
+            {"headerName": "Оценка (чек-лист)", "field": "Оценка (чек-лист)", "flex": 1.5, **score_cell()},
+            {"headerName": "QA-оценка", "field": "QA-оценка", "flex": 1, **score_cell()},
+            {"headerName": "Удовл клиента", "field": "Удовл клиента", "flex": 1.5, **score_cell()},
         ],
         defaultColDef={"sortable": True, "filter": True, "resizable": True},
         style={"height": "420px"},

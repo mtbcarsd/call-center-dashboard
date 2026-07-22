@@ -10,18 +10,10 @@ from dash import html
 from checklist import CHECKLIST
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
+from dash_app.components.cell_format import pct_cell
 from dash_app.data import load_calls, parse_checklist, checklist_pass_rates
 
 dash.register_page(__name__, path="/rating", name="Рейтинг", order=2)
-
-_PCT_STYLE = {
-    "styleConditions": [
-        {"condition": "params.value >= 75", "style": {"color": "#15803D", "fontWeight": "600"}},
-        {"condition": "params.value >= 50 && params.value < 75", "style": {"color": "#D97706", "fontWeight": "500"}},
-        {"condition": "params.value < 50", "style": {"color": "#B91C1C", "fontWeight": "600"}},
-    ]
-}
-_PCT_FMT = {"function": "params.value != null ? params.value.toFixed(0) + '%' : '—'"}
 
 
 def layout():
@@ -68,8 +60,7 @@ def layout():
         columnDefs=[
             {"headerName": "Пункт чек-листа", "field": "Пункт чек-листа", "flex": 3},
             {"headerName": "Вес (%)", "field": "Вес (%)", "flex": 1},
-            {"headerName": "Прохождение (%)", "field": "Прохождение (%)", "flex": 1.5,
-             "valueFormatter": _PCT_FMT, "cellStyle": _PCT_STYLE},
+            {"headerName": "Прохождение (%)", "field": "Прохождение (%)", "flex": 1.5, **pct_cell()},
         ],
         defaultColDef={"sortable": True, "resizable": True},
         style={"height": "290px"},
@@ -101,8 +92,7 @@ def layout():
                 op_col_defs.append({
                     "headerName": short, "field": label, "flex": 1.2,
                     "headerTooltip": label,
-                    "valueFormatter": _PCT_FMT,
-                    "cellStyle": _PCT_STYLE,
+                    **pct_cell(),
                 })
             op_grid = dag.AgGrid(
                 rowData=op_rows,
