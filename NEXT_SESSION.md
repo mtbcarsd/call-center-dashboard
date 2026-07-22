@@ -17,12 +17,14 @@
   LLM-бэкенд для `api`/`pipelines` — Groq (`LLM_BASE_URL=https://api.groq.com/openai/v1`),
   облачный, от RAM не зависит.
 - **✅ Phase D1 (Dash) — ЗАВЕРШЕНА (сессия 10-11, 2026-07-21/22).** Новый Railway-сервис
-  `dash-director` задеплоен и живёт по адресу
-  **https://dash-director-production.up.railway.app**. Все 6 страниц работают (200):
-  `/` Аналитика, `/operators` Операторы, `/rating` Рейтинг, `/compliance` Compliance,
-  `/trends` Тренды, `/team` Команда. 22 новых юнит-теста + 12 старых — все зелёные.
-  Streamlit-дашборд при этом продолжает работать параллельно. Следующий этап — D2
-  (auth + ролевые дашборды).
+  `dash-director` задеплоен: **https://dash-director-production.up.railway.app**. Все
+  6 страниц работают, 22 юнит-теста, Streamlit параллельно.
+- **✅ Phase D2 (auth + роли) — ЗАВЕРШЕНА (сессия 11, 2026-07-22).**
+  Логин/логаут через Flask-сессию, bcrypt-хэш, `before_request`-гейт. Три учётки:
+  `julia` (executive, видит всё), `boss_oo` (manager OO), `boss_orkki` (manager ORKKiP).
+  Server-side фильтр по department в `load_calls(department=...)` — начальник не видит
+  чужой отдел даже при прямом вызове callback. 49 тестов, 0 ошибок. Деплой SUCCESS.
+  Следующий этап — D3 (личный кабинет сотрудника + coaching-агент).
 - **`pipelines` (OpenWebUI-чат) — всё ещё НЕ РАБОТАЕТ**, но по ДРУГОЙ причине, не RAM:
   `ghcr.io/open-webui/pipelines:main` несёт свой набор torch+torchvision+torchaudio,
   несовместимый с нашим `torch==2.12.1` из `requirements-ml.txt`. Нашли и вживую
@@ -138,11 +140,10 @@ S3-хранилище аудио (Railway Bucket).
 
 **D. 🎯 Миграция на Plotly Dash + ролевые дашборды** — полный план в
 [DASH_MIGRATION_PLAN.md](DASH_MIGRATION_PLAN.md).
-- **✅ Phase D1** — ЗАВЕРШЕНА. Dash-дашборд директора запущен на Railway
-  (`dash-director-production.up.railway.app`), 6 страниц, 22 юнит-теста.
-- **⏭ Phase D2** — auth + ролевые дашборды: логин, JWT, три роли (директор /
-  начальник отдела / сотрудник), изоляция данных. Checkpoint D1 для директора пройден,
-  можно приступать к D2.
+- **✅ Phase D1** — ЗАВЕРШЕНА. Dash-дашборд директора, 6 страниц, 22 юнит-теста.
+- **✅ Phase D2** — ЗАВЕРШЕНА. Login + роли + server-side department-фильтр, 49 тестов.
+- **⏭ Phase D3** — личный кабинет сотрудника + `agents/coaching.py` + `GET /coaching/{operator_name}`.
+  Детали — в `DASH_MIGRATION_PLAN.md → Phase D3`.
 
 **A. Показать `call_datetime` в UI** (дёшево, см. находку сессии 9) — деталка звонка +
 возможный time-based график в Compliance/Рейтинге теперь, когда 10 из 20 звонков
@@ -168,13 +169,12 @@ S3-хранилище аудио (Railway Bucket).
 
 ```
 Продолжаем call_center_dashboard. Прочитай NEXT_SESSION.md в корне репозитория —
-Фазы 1-3 + Phase D1 (Dash) полностью завершены. Dash-дашборд директора работает
-на https://dash-director-production.up.railway.app (6 страниц, 22 юнит-теста,
-Railway сервис dash-director). Streamlit продолжает работать параллельно.
-Следующий логичный шаг — Phase D2 (auth + ролевые дашборды по DASH_MIGRATION_PLAN.md).
-Другие варианты: (A) показать call_datetime в UI, (B) Phase 4/5 из README,
-(C) починить pipelines/OpenWebUI-чат. Спроси меня, с чего начать, прежде чем
-писать код.
+Фазы 1-3 + Phase D1 + Phase D2 полностью завершены. Dash-дашборд с логином и
+ролями работает на https://dash-director-production.up.railway.app. Учётки:
+julia (executive), boss_oo (manager OO), boss_orkki (manager ORKKiP).
+Следующий логичный шаг — Phase D3 (личный кабинет сотрудника + coaching-агент).
+Другие варианты: (A) call_datetime в UI, (B) Phase 4/5 из README, (C) pipelines.
+Спроси меня, с чего начать, прежде чем писать код.
 ```
 
 Если контекст нужен — всё равно сначала прочитать README.md → «Статус деплоя»
