@@ -168,13 +168,28 @@ S3-хранилище аудио (Railway Bucket).
 Скопировать и вставить как первое сообщение:
 
 ```
-Продолжаем call_center_dashboard. Прочитай NEXT_SESSION.md в корне репозитория —
-Фазы 1-3 + Phase D1 + Phase D2 полностью завершены. Dash-дашборд с логином и
-ролями работает на https://dash-director-production.up.railway.app. Учётки:
-julia (executive), boss_oo (manager OO), boss_orkki (manager ORKKiP).
-Следующий логичный шаг — Phase D3 (личный кабинет сотрудника + coaching-агент).
-Другие варианты: (A) call_datetime в UI, (B) Phase 4/5 из README, (C) pipelines.
-Спроси меня, с чего начать, прежде чем писать код.
+Продолжаем call_center_dashboard. Прочитай NEXT_SESSION.md в корне репозитория.
+
+Коротко о состоянии:
+- Phase D1 + D2 завершены. Dash-дашборд с логином/ролями работает на
+  https://dash-director-production.up.railway.app
+- Учётки: julia (executive, всё), boss_oo (manager OO), boss_orkki (manager ORKKiП)
+- Streamlit продолжает работать параллельно (не трогаем)
+- 49 юнит-тестов, 0 ошибок
+
+Задача на эту сессию — UI-полиш Dash-дашборда. Я пришлю скриншоты и/или ссылку
+на референс-сайт — смотри на них прежде чем писать что-либо. Дождись моих
+материалов, не начинай писать код до моей команды.
+
+Технический стек Dash-части:
+- dash_app/app.py — главный файл, nav + login/logout
+- dash_app/pages/ — 6 страниц (analytics, operators, rating, compliance, trends, team)
+- dash_app/components/stat_tile.py — KPI-карточка
+- dash_app/colors.py — единая палитра COLORS
+- dash_app/auth.py — bcrypt + get_current_user/get_current_department
+- dash_app/data.py — load_calls(department=None)
+- requirements-dash.txt — зависимости (все пинированы явно)
+- dash_app/Dockerfile — Railway деплой
 ```
 
 Если контекст нужен — всё равно сначала прочитать README.md → «Статус деплоя»
