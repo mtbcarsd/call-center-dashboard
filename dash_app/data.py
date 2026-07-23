@@ -4,16 +4,25 @@
 модуль, что и у Streamlit). Нет кэша: при 20 звонках запрос занимает <10 мс,
 Dash multi-worker gunicorn не может шарить in-process кэш между воркерами.
 """
-import json
-
 import pandas as pd
 
 from db import get_connection
-from checklist import CHECKLIST
+# Реэкспорт: единственный источник этих функций — checklist.py (используется
+# и Streamlit-дашбордом, и Dash-страницами).
+from checklist import parse_checklist, parse_compliance, checklist_pass_rates  # noqa: F401
 
 
-def load_calls(department: str | None = None) -> pd.DataFrame:
-    """Загружает звонки из БД. Если department задан — фильтрует на сервере (для manager)."""
+def load_calls(
+    department: str | None = None,
+    operator_match_name: str | None = None,
+) -> pd.DataFrame:
+    """Загружает звонки из БД.
+
+    department — server-side фильтр для manager, operator_match_name — для
+    employee (личный кабинет, видит только свои звонки). Оба фильтра
+    применяются на уровне SQL, а не в Python после загрузки — так сотрудник
+    не увидит чужие звонки, даже если напрямую дёрнет callback.
+    """
     _base_sql = """
         SELECT
             file_name, department, call_topic, call_summary,
@@ -26,16 +35,19 @@ def load_calls(department: str | None = None) -> pd.DataFrame:
         {where}
         ORDER BY COALESCE(call_datetime, analyzed_at) DESC NULLS LAST
     """
+    conditions = []
+    params = {}
+    if department:
+        conditions.append("department = %(dept)s")
+        params["dept"] = department
+    if operator_match_name:
+        conditions.append("operator_name = %(operator)s")
+        params["operator"] = operator_match_name
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
     conn = get_connection()
     try:
-        if department:
-            df = pd.read_sql(
-                _base_sql.format(where="WHERE department = %(dept)s"),
-                conn,
-                params={"dept": department},
-            )
-        else:
-            df = pd.read_sql(_base_sql.format(where=""), conn)
+        df = pd.read_sql(_base_sql.format(where=where), conn, params=params or None)
     finally:
         conn.close()
     df["call_type_effective"] = df["call_type_override"].where(
@@ -43,38 +55,3 @@ def load_calls(department: str | None = None) -> pd.DataFrame:
         other=df["call_type"],
     )
     return df
-
-
-def parse_checklist(raw) -> dict:
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-
-
-def parse_compliance(raw):
-    if not raw:
-        return None
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        return None
-    return {
-        "passed": bool(parsed.get("passed", True)),
-        "issues": parsed.get("issues") or [],
-    }
-
-
-def checklist_pass_rates(checklists: list) -> dict:
-    """Процент прохождения каждого пункта чек-листа (0–100 или None если нет данных)."""
-    rates = {}
-    for item in CHECKLIST:
-        key = item["key"]
-        results = [c[key] for c in checklists if key in c]
-        rates[item["label"]] = (
-            sum(1 for r in results if r) / len(results) * 100
-            if results else None
-        )
-    return rates

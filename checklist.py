@@ -3,6 +3,7 @@
 Каждая категория — да/нет вопрос с весом. Сумма весов = 100,
 поэтому взвешенный итог сразу читается как процент/оценка из 10.
 """
+import json
 
 CHECKLIST = [
     {
@@ -52,3 +53,41 @@ def weighted_score(checklist_result: dict) -> float:
         item["weight"] for item in CHECKLIST if checklist_result.get(item["key"])
     )
     return round(total / 10, 1)
+
+
+# ── Парсинг сохранённых в БД checklist_json/compliance_json ──────────────────
+# Единый источник вместо дублей в dashboard.py (Streamlit) и dash_app/data.py (Dash).
+
+def parse_checklist(raw) -> dict:
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def parse_compliance(raw) -> dict | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return {
+        "passed": bool(parsed.get("passed", True)),
+        "issues": parsed.get("issues") or [],
+    }
+
+
+def checklist_pass_rates(checklists: list[dict]) -> dict[str, float | None]:
+    """Процент прохождения каждого пункта чек-листа (0-100 или None если нет данных)."""
+    rates = {}
+    for item in CHECKLIST:
+        key = item["key"]
+        results = [c[key] for c in checklists if key in c]
+        rates[item["label"]] = (
+            sum(1 for r in results if r) / len(results) * 100
+            if results else None
+        )
+    return rates

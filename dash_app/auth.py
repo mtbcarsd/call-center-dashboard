@@ -48,3 +48,16 @@ def get_current_department() -> str | None:
     if user and user["role"] == "manager":
         return user["department"]
     return None
+
+
+def get_current_operator_match_name() -> str | None:
+    """operator_match_name из сессии для employee (личный кабинет) — иначе None.
+
+    Используется как server-side фильтр в load_calls(), тем же паттерном, что
+    department для manager: сотрудник не увидит чужие звонки, даже если
+    напрямую дёрнет callback другой страницы.
+    """
+    user = get_current_user()
+    if user and user["role"] == "employee":
+        return user["operator_match_name"]
+    return None

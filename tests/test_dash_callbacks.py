@@ -151,3 +151,42 @@ class TestRenderTrendsResult:
         result = self._fn(api_result, None)
         assert "Совет Б" in str(result)
         assert "Найденные паттерны" not in str(result)
+
+
+# ── render_coaching_result (D3.1/D3.3) ───────────────────────────────────────
+
+class TestRenderCoachingResult:
+    """Тест чистой функции сборки UI по ответу GET /coaching/{operator_name}."""
+
+    def setup_method(self):
+        from dash_app.coaching_logic import render_coaching_result
+        self._fn = render_coaching_result
+
+    def test_error_contains_message(self):
+        result = self._fn(None, "Connection refused")
+        assert "Connection refused" in str(result)
+        assert "недоступен" in str(result)
+
+    def test_success_with_all_sections(self):
+        api_result = {
+            "strengths": ["Вежливый тон"],
+            "weaknesses": ["Слабое выявление потребности"],
+            "recommendations": ["Тренировать открытые вопросы"],
+        }
+        result_str = str(self._fn(api_result, None))
+        assert "Вежливый тон" in result_str
+        assert "Слабое выявление потребности" in result_str
+        assert "Тренировать открытые вопросы" in result_str
+
+    def test_empty_response_shows_no_data_message(self):
+        result = self._fn({"strengths": [], "weaknesses": [], "recommendations": []}, None)
+        assert "Недостаточно данных" in str(result)
+
+    def test_none_result_shows_no_data_message(self):
+        assert "Недостаточно данных" in str(self._fn(None, None))
+
+    def test_only_strengths_no_other_sections(self):
+        result_str = str(self._fn({"strengths": ["Сильная сторона"]}, None))
+        assert "Сильная сторона" in result_str
+        assert "Точки роста" not in result_str
+        assert "Рекомендации" not in result_str

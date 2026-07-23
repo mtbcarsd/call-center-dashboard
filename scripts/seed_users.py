@@ -7,6 +7,8 @@
     julia      — role=executive, пароль: 6o5OeXT8lPwuMP (как в Streamlit)
     boss_oo    — role=manager,   department=OO,     пароль: boss_oo
     boss_orkki — role=manager,   department=ORKKiP, пароль: boss_orkki
+    sokolova   — role=employee,  department=OO,     пароль: sokolova123
+                 (личный кабинет, operator_match_name="Соколова Екатерина Викторовна")
 
 Скрипт идемпотентен (ON CONFLICT DO NOTHING) — безопасно запускать повторно.
 Чтобы обновить пароль существующего пользователя, используй ON CONFLICT DO UPDATE.
@@ -43,6 +45,14 @@ _USERS = [
         "display_name": "Начальник ОРККиП",
         "department": "ORKKiP",
         "operator_match_name": None,
+    },
+    {
+        "username": "sokolova",
+        "password": "sokolova123",
+        "role": "employee",
+        "display_name": "Соколова Екатерина",
+        "department": "OO",
+        "operator_match_name": "Соколова Екатерина Викторовна",
     },
 ]
 

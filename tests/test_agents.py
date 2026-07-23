@@ -4,6 +4,7 @@ import json
 import pytest
 
 from agents.classifier import ClassifierAgent
+from agents.coaching import CoachingAgent, _format_summary, analyze_coaching
 from agents.compliance import ComplianceAgent
 from agents.quality import QualityAgent
 from agents.summarizer import SummarizerAgent
@@ -101,3 +102,50 @@ async def test_summarizer_falls_back_on_invalid_json(fake_client, sample_transcr
     agent._client = fake_client("не json")
     result = await agent.run(sample_transcript)
     assert result == agent.fallback()
+
+
+# ── Coaching (D3.3) ─────────────────────────────────────────────────────────────
+async def test_coaching_parses_valid_json(fake_client):
+    agent = CoachingAgent()
+    payload = {
+        "strengths": ["Вежливый тон"],
+        "weaknesses": ["Слабое выявление потребности"],
+        "recommendations": ["Потренировать открытые вопросы"],
+    }
+    agent._client = fake_client(json.dumps(payload))
+    result = await agent.run("- Звонков: 10", n=10, operator="Иванова")
+    assert result == payload
+
+
+async def test_coaching_falls_back_on_invalid_json(fake_client):
+    agent = CoachingAgent()
+    agent._client = fake_client("не json")
+    result = await agent.run("- Звонков: 10", n=10, operator="Иванова")
+    assert result == agent.fallback()
+
+
+def test_coaching_format_summary_includes_checklist_and_issues():
+    stats = {
+        "calls_count": 5,
+        "avg_agent_score": 6.5,
+        "avg_customer_satisfaction": 8.0,
+        "resolution_rate": 80.0,
+        "checklist_rates": {"Приветствие": 100.0, "Выявление потребности": 20.0},
+        "compliance_issues": ["не представился"],
+    }
+    summary = _format_summary(stats)
+    assert "Звонков: 5" in summary
+    assert "6.5/10" in summary
+    assert "Выявление потребности: 20%" in summary
+    assert "не представился" in summary
+
+
+def test_coaching_format_summary_handles_missing_data():
+    stats = {"calls_count": 3}
+    summary = _format_summary(stats)
+    assert "нет данных" in summary
+
+
+async def test_analyze_coaching_no_calls_returns_fallback():
+    result = await analyze_coaching("Иванова", {"calls_count": 0})
+    assert result == {"strengths": [], "weaknesses": [], "recommendations": []}

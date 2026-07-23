@@ -12,6 +12,7 @@ import pytest
 
 from dash_app.auth import (
     get_current_department,
+    get_current_operator_match_name,
     get_current_user,
     hash_password,
     verify_password,
@@ -93,12 +94,39 @@ class TestGetCurrentDepartment:
             assert get_current_department() is None
 
 
+class TestGetCurrentOperatorMatchName:
+    def test_employee_returns_operator_match_name(self):
+        app = _make_app()
+        with app.test_request_context("/"):
+            flask.session["user"] = {
+                "role": "employee", "operator_match_name": "Соколова Екатерина Викторовна",
+            }
+            assert get_current_operator_match_name() == "Соколова Екатерина Викторовна"
+
+    def test_executive_returns_none(self):
+        app = _make_app()
+        with app.test_request_context("/"):
+            flask.session["user"] = {"role": "executive", "operator_match_name": None}
+            assert get_current_operator_match_name() is None
+
+    def test_manager_returns_none(self):
+        app = _make_app()
+        with app.test_request_context("/"):
+            flask.session["user"] = {"role": "manager", "operator_match_name": None}
+            assert get_current_operator_match_name() is None
+
+    def test_no_session_returns_none(self):
+        app = _make_app()
+        with app.test_request_context("/"):
+            assert get_current_operator_match_name() is None
+
+
 # ── load_calls: проверка SQL-фильтра ─────────────────────────────────────────
 
 class TestLoadCallsDepartmentFilter:
-    """Проверяем, что department-фильтр попадает в SQL-запрос."""
+    """Проверяем, что department/operator-фильтры попадают в SQL-запрос."""
 
-    def _run_load_calls(self, department):
+    def _run_load_calls(self, department=None, operator_match_name=None):
         import pandas as pd
         empty_df = pd.DataFrame(columns=[
             "file_name", "department", "call_topic", "call_summary",
@@ -112,25 +140,40 @@ class TestLoadCallsDepartmentFilter:
         with patch("dash_app.data.get_connection", return_value=mock_conn), \
              patch("dash_app.data.pd.read_sql", return_value=empty_df) as mock_sql:
             from dash_app.data import load_calls
-            load_calls(department=department)
+            load_calls(department=department, operator_match_name=operator_match_name)
             return mock_sql
 
     def test_no_filter_sql_has_no_where(self):
-        mock_sql = self._run_load_calls(None)
+        mock_sql = self._run_load_calls()
         sql_arg = mock_sql.call_args[0][0]
         assert "WHERE" not in sql_arg
 
     def test_department_filter_adds_where(self):
-        mock_sql = self._run_load_calls("OO")
+        mock_sql = self._run_load_calls(department="OO")
         sql_arg = mock_sql.call_args[0][0]
         assert "WHERE department" in sql_arg
 
     def test_department_passed_as_param(self):
-        mock_sql = self._run_load_calls("OO")
+        mock_sql = self._run_load_calls(department="OO")
         kwargs = mock_sql.call_args[1]
         assert kwargs.get("params", {}).get("dept") == "OO"
 
     def test_orkki_filter(self):
-        mock_sql = self._run_load_calls("ORKKiP")
+        mock_sql = self._run_load_calls(department="ORKKiP")
         kwargs = mock_sql.call_args[1]
         assert kwargs.get("params", {}).get("dept") == "ORKKiP"
+
+    def test_operator_filter_adds_where(self):
+        mock_sql = self._run_load_calls(operator_match_name="Соколова Екатерина Викторовна")
+        sql_arg = mock_sql.call_args[0][0]
+        assert "WHERE operator_name" in sql_arg
+
+    def test_operator_passed_as_param(self):
+        mock_sql = self._run_load_calls(operator_match_name="Соколова Екатерина Викторовна")
+        kwargs = mock_sql.call_args[1]
+        assert kwargs.get("params", {}).get("operator") == "Соколова Екатерина Викторовна"
+
+    def test_department_and_operator_combine_with_and(self):
+        mock_sql = self._run_load_calls(department="OO", operator_match_name="Иванова")
+        sql_arg = mock_sql.call_args[0][0]
+        assert "WHERE department" in sql_arg and "AND operator_name" in sql_arg

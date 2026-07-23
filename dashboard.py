@@ -9,7 +9,9 @@ import os
 import requests
 
 from db import get_connection
-from checklist import CHECKLIST
+from checklist import CHECKLIST, parse_checklist as _parse_checklist
+from checklist import parse_compliance as _parse_compliance
+from checklist import checklist_pass_rates as _checklist_pass_rates
 from storage import presigned_url
 
 # Тренды считаются на стороне сервиса `api` (агент agents/trends.py, ходит в Groq) —
@@ -698,24 +700,6 @@ with tab_operators:
         )
 
 # ── Вкладка рейтинга: разбивка чек-листа по пунктам ───────────────────────────
-def _parse_checklist(raw):
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-
-
-def _checklist_pass_rates(checklists: list[dict]) -> dict[str, float | None]:
-    rates = {}
-    for item in CHECKLIST:
-        key = item["key"]
-        results = [c[key] for c in checklists if key in c]
-        rates[item["label"]] = (sum(1 for r in results if r) / len(results) * 100) if results else None
-    return rates
-
-
 with tab_rating:
     st.markdown("### 🏆 Рейтинг по чек-листу")
     st.caption(f"Разбивка по {len(CHECKLIST)} пунктам чек-листа, по всем {len(df_all)} звонкам")
@@ -767,16 +751,6 @@ with tab_rating:
             st.dataframe(pd.DataFrame(op_rows), use_container_width=True, hide_index=True)
 
 # ── Вкладка Compliance ─────────────────────────────────────────────────────────
-def _parse_compliance(raw):
-    if not raw:
-        return None
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        return None
-    return {"passed": bool(parsed.get("passed", True)), "issues": parsed.get("issues") or []}
-
-
 with tab_compliance:
     st.markdown("### 🛡️ Compliance")
 

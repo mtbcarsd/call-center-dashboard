@@ -132,23 +132,41 @@ def logout():
 
 # ── Защита всех Dash-роутов ────────────────────────────────────────────────────
 
+# Сотрудник (role=employee) видит только свой личный кабинет — остальные
+# страницы показывают агрегаты и данные ДРУГИХ операторов (рейтинг, compliance
+# по именам), это утечка внутри отдела, а не просто вопрос UX. Поэтому для
+# employee редиректим с любой другой страницы, а не просто прячем пункт меню
+# (тот же принцип, что server-side department-фильтр для manager в D2).
+_EMPLOYEE_ALLOWED_PATHS = {"/me", "/login", "/logout"}
+
+
 @server.before_request
 def _require_login():
     if request.path in ("/login", "/logout"):
         return None
     if not session.get("user"):
         return redirect(f"/login?next={request.path}")
+    user = session["user"]
+    if user.get("role") == "employee":
+        path = request.path
+        if path in _EMPLOYEE_ALLOWED_PATHS or path.startswith(("/_dash", "/assets")):
+            return None
+        return redirect("/me")
 
 
 # ── Навигация ─────────────────────────────────────────────────────────────────
 
-_NAV_LINKS = [
+_DIRECTOR_NAV_LINKS = [
     ("/", "📊 Аналитика"),
     ("/operators", "🧑‍💼 Операторы"),
     ("/rating", "🏆 Рейтинг"),
     ("/compliance", "🛡️ Compliance"),
     ("/trends", "📈 Тренды"),
     ("/team", "👥 Команда"),
+]
+
+_EMPLOYEE_NAV_LINKS = [
+    ("/me", "🙋 Мой кабинет"),
 ]
 
 
@@ -229,12 +247,13 @@ app.layout = html.Div(
 )
 def update_nav(pathname: str):
     pathname = pathname or "/"
+    user = get_current_user()
+    links = _EMPLOYEE_NAV_LINKS if user and user.get("role") == "employee" else _DIRECTOR_NAV_LINKS
     nav_links = [
         _nav_link(href, label, pathname == href or (href != "/" and pathname.startswith(href)))
-        for href, label in _NAV_LINKS
+        for href, label in links
     ]
 
-    user = get_current_user()
     if user:
         dept_badge = []
         if user.get("department"):

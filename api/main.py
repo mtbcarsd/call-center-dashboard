@@ -13,9 +13,11 @@ import tempfile
 import requests
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 
+from agents.coaching import analyze_coaching
 from agents.trends import analyze_trends
 from asr.diarizer import diarize, operator_talk_ratio
 from asr.transcriber import Transcriber
+from checklist import checklist_pass_rates, parse_checklist, parse_compliance
 from db import get_connection
 from orchestrator import analyze as orchestrate_analysis
 
@@ -114,6 +116,49 @@ async def trends_endpoint(limit: int = 20) -> dict:
         for row in rows
     ]
     return await analyze_trends(calls)
+
+
+@app.get("/coaching/{operator_name}")
+async def coaching_endpoint(operator_name: str) -> dict:
+    """Рекомендации по обучению для оператора — агрегат по его звонкам + LLM.
+
+    Не переанализирует транскрипты — считает сводку из уже посчитанных
+    checklist_json/compliance_json/оценок (см. agents/coaching.py).
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT agent_performance_score, customer_satisfaction, resolution_status, "
+        "checklist_json, compliance_json FROM call_analysis WHERE operator_name = %s",
+        (operator_name,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"strengths": [], "weaknesses": [], "recommendations": []}
+
+    scores = [r[0] for r in rows if r[0] is not None]
+    satisfactions = [r[1] for r in rows if r[1] is not None]
+    resolved = sum(1 for r in rows if r[2] == "resolved")
+
+    checklists = [c for c in (parse_checklist(r[3]) for r in rows) if c]
+
+    issues = []
+    for r in rows:
+        parsed = parse_compliance(r[4])
+        if parsed and not parsed["passed"]:
+            issues.extend(parsed["issues"])
+
+    stats = {
+        "calls_count": len(rows),
+        "avg_agent_score": sum(scores) / len(scores) if scores else None,
+        "avg_customer_satisfaction": sum(satisfactions) / len(satisfactions) if satisfactions else None,
+        "resolution_rate": resolved / len(rows) * 100 if rows else None,
+        "checklist_rates": checklist_pass_rates(checklists) if checklists else {},
+        "compliance_issues": sorted(set(issues)),
+    }
+    return await analyze_coaching(operator_name, stats)
 
 
 @app.websocket("/transcribe/stream")
