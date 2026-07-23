@@ -158,6 +158,7 @@ def _require_login():
 
 _DIRECTOR_NAV_LINKS = [
     ("/", "📊 Аналитика"),
+    ("/calls", "📁 Звонки"),
     ("/operators", "🧑‍💼 Операторы"),
     ("/rating", "🏆 Рейтинг"),
     ("/compliance", "🛡️ Compliance"),

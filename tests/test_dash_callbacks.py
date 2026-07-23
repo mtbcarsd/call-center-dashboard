@@ -190,3 +190,138 @@ class TestRenderCoachingResult:
         assert "Сильная сторона" in result_str
         assert "Точки роста" not in result_str
         assert "Рекомендации" not in result_str
+
+
+# ── score_dot (D4.1) ──────────────────────────────────────────────────────────
+
+class TestScoreDot:
+    def setup_method(self):
+        from dash_app.components.cell_format import score_dot
+        self._fn = score_dot
+
+    def test_high_score_green(self):
+        assert self._fn(8) == "🟢"
+
+    def test_mid_score_orange(self):
+        assert self._fn(6) == "🟠"
+
+    def test_low_score_red(self):
+        assert self._fn(3) == "🔴"
+
+    def test_boundary_good_is_green(self):
+        assert self._fn(7, good=7, warn=5) == "🟢"
+
+    def test_none_is_grey(self):
+        assert self._fn(None) == "⚪"
+
+    def test_nan_is_grey(self):
+        import math
+        assert self._fn(float("nan")) == "⚪"
+
+
+# ── render_call_card / render_call_detail (D4.1) ─────────────────────────────
+
+class TestRenderCallCard:
+    def setup_method(self):
+        from dash_app.calls_logic import render_call_card
+        self._fn = render_call_card
+
+    def _row(self, **overrides):
+        base = {
+            "file_name": "test.wav", "call_topic": "Потеря карты", "department": "OO",
+            "urgency": "high", "call_type": "карты", "call_type_override": None,
+            "call_type_effective": "карты", "operator_name": None,
+            "agent_performance_score": 8.0, "resolution_status": "resolved",
+        }
+        base.update(overrides)
+        return base
+
+    def test_contains_topic_and_department(self):
+        result_str = str(self._fn(self._row(), {"type": "open-call-btn", "index": "test.wav"}))
+        assert "Потеря карты" in result_str
+        assert "OO" in result_str
+
+    def test_shows_operator_when_present(self):
+        result_str = str(self._fn(self._row(operator_name="Иванова"), {"type": "x", "index": "a"}))
+        assert "Иванова" in result_str
+
+    def test_hides_operator_when_absent(self):
+        result_str = str(self._fn(self._row(), {"type": "x", "index": "a"}))
+        assert "🧑‍💼" not in result_str
+
+    def test_button_has_pattern_matching_id(self):
+        btn_id = {"type": "open-call-btn", "index": "test.wav"}
+        result = self._fn(self._row(), btn_id)
+        button = result.children[-1]
+        assert button.id == btn_id
+
+    def test_override_shows_tag_icon(self):
+        result_str = str(self._fn(self._row(call_type_override="переводы"), {"type": "x", "index": "a"}))
+        assert "🏷️" in result_str
+
+
+class TestRenderCallDetail:
+    def setup_method(self):
+        from dash_app.calls_logic import render_call_detail
+        self._fn = render_call_detail
+
+    def _row(self, **overrides):
+        base = {
+            "call_topic": "Потеря карты", "department": "OO", "call_type": "карты",
+            "call_type_override": None, "operator_name": "Иванова",
+            "customer_intent": "восстановить доступ", "urgency": "high",
+            "resolution_status": "resolved", "agent_performance_score": 7.5,
+            "qa_score": None, "customer_satisfaction": 9, "escalation_flag": 0,
+            "silence_pct": None, "pause_count": None, "operator_talk_ratio": None,
+            "key_topics": None, "checklist_json": None, "compliance_json": None,
+            "call_summary": None, "transcript_text": "Полный текст разговора.",
+            "segments": None,
+        }
+        base.update(overrides)
+        return base
+
+    def test_shows_ai_unconfirmed_type(self):
+        result_str = str(self._fn(self._row()))
+        assert "AI, не подтверждено" in result_str
+
+    def test_shows_confirmed_override_type(self):
+        result_str = str(self._fn(self._row(call_type_override="переводы")))
+        assert "переводы" in result_str
+        assert "AI предложил: карты" in result_str
+
+    def test_qa_score_shows_delta(self):
+        result_str = str(self._fn(self._row(qa_score=9.0, agent_performance_score=7.0)))
+        assert "+2.0" in result_str
+
+    def test_no_qa_score_shows_placeholder(self):
+        result_str = str(self._fn(self._row()))
+        assert "не проставлена" in result_str
+
+    def test_checklist_renders_pass_fail_icons(self):
+        checklist = {item["key"]: True for item in __import__("checklist").CHECKLIST}
+        result_str = str(self._fn(self._row(checklist_json=checklist)))
+        assert "✅" in result_str
+
+    def test_compliance_violations_shown(self):
+        compliance = {"passed": False, "issues": ["Не представился"]}
+        result_str = str(self._fn(self._row(compliance_json=compliance)))
+        assert "Не представился" in result_str
+
+    def test_compliance_clean_shows_success(self):
+        compliance = {"passed": True, "issues": []}
+        result_str = str(self._fn(self._row(compliance_json=compliance)))
+        assert "нарушений не найдено" in result_str
+
+    def test_transcript_fallback_without_segments(self):
+        result_str = str(self._fn(self._row()))
+        assert "Полный текст разговора." in result_str
+
+    def test_segments_render_speaker_labels(self):
+        segments = [{"speaker": "operator", "start_sec": 0, "end_sec": 5, "text": "Здравствуйте"}]
+        result_str = str(self._fn(self._row(segments=segments)))
+        assert "Здравствуйте" in result_str
+        assert "Оператор" in result_str
+
+    def test_summary_shown_when_present(self):
+        result_str = str(self._fn(self._row(call_summary="Клиент решил вопрос.")))
+        assert "Клиент решил вопрос." in result_str

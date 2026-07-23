@@ -25,12 +25,13 @@ def load_calls(
     """
     _base_sql = """
         SELECT
-            file_name, department, call_topic, call_summary,
+            file_name, department, call_topic, call_summary, transcript_text,
             call_type, call_type_override, customer_intent,
             urgency, resolution_status,
             agent_performance_score, customer_satisfaction,
             escalation_flag, operator_name, call_datetime, analyzed_at,
-            silence_pct, checklist_json, compliance_json, qa_score
+            silence_pct, pause_count, operator_talk_ratio, key_topics,
+            checklist_json, compliance_json, qa_score, audio_key
         FROM call_analysis
         {where}
         ORDER BY COALESCE(call_datetime, analyzed_at) DESC NULLS LAST
@@ -54,4 +55,19 @@ def load_calls(
         df["call_type_override"].notna() & (df["call_type_override"] != ""),
         other=df["call_type"],
     )
+    return df
+
+
+def load_segments(file_name: str) -> pd.DataFrame:
+    """Реплики транскрипта звонка (для деталки в /calls, клик-перемотка в D4.2)."""
+    conn = get_connection()
+    try:
+        df = pd.read_sql(
+            "SELECT seg_index, start_sec, end_sec, speaker, text FROM call_segments "
+            "WHERE file_name = %(fn)s ORDER BY seg_index",
+            conn,
+            params={"fn": file_name},
+        )
+    finally:
+        conn.close()
     return df
