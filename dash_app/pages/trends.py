@@ -102,7 +102,7 @@ def layout():
                 "gap": "1.5rem",
                 "alignItems": "flex-end",
                 "marginBottom": "1.5rem",
-                "background": "white",
+                "background": COLORS["card_bg"],
                 "padding": "1.25rem",
                 "borderRadius": "0.625rem",
                 "boxShadow": "0 1px 3px rgba(0,0,0,0.07)",

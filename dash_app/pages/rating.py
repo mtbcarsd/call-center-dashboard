@@ -49,7 +49,7 @@ def layout():
                 "borderLeft": f"4px solid {COLORS['warning']}",
                 "padding": "0.75rem 1rem",
                 "borderRadius": "0.375rem",
-                "color": "#92400E",
+                "color": COLORS["warning"],
                 "fontWeight": "500",
                 "marginBottom": "1rem",
                 "fontSize": "0.9rem",
@@ -118,7 +118,7 @@ def layout():
         html.Div(
             card_children,
             style={
-                "background": "white",
+                "background": COLORS["card_bg"],
                 "borderRadius": "0.625rem",
                 "padding": "1.25rem",
                 "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",

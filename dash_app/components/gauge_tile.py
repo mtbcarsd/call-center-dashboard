@@ -22,16 +22,22 @@ def gauge_tile(label: str, value_pct: float, good: float = 75, warn: float = 50)
     else:
         color = COLORS["danger"]
 
+    # Plotly не умеет резолвить CSS custom properties (var(--...)) — COLORS
+    # теперь на них указывает для UI-хромы (см. dash_app/colors.py), поэтому
+    # здесь красим число тем же статусным accent-цветом (реальный hex), а не
+    # COLORS["text_primary"] — заодно число визуально совпадает по цвету со
+    # статусом гейджа. tickcolor — фиксированный нейтральный серый, читаемый
+    # что на светлой, что на тёмной поверхности карточки.
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
         number={
             "suffix": "%" if has_value else "",
             "valueformat": ".0f",
-            "font": {"size": 26, "color": COLORS["text_primary"] if has_value else COLORS["neutral"]},
+            "font": {"size": 26, "color": color},
         },
         gauge={
-            "axis": {"range": [0, 100], "tickfont": {"size": 8}, "tickcolor": COLORS["border"]},
+            "axis": {"range": [0, 100], "tickfont": {"size": 8}, "tickcolor": "#94A3B8"},
             "bar": {"color": color},
             "bgcolor": "#F1F5F9",
             "borderwidth": 0,
@@ -66,7 +72,7 @@ def gauge_tile(label: str, value_pct: float, good: float = 75, warn: float = 50)
             ),
         ],
         style={
-            "background": "white",
+            "background": COLORS["card_bg"],
             "borderRadius": "0.625rem",
             "padding": "0.75rem 1rem 0",
             "borderLeft": f"4px solid {color}",

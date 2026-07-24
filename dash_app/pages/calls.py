@@ -48,7 +48,7 @@ dash.register_page(__name__, path="/calls", name="Звонки", order=1)
 _PAGE_SIZE = 24
 
 _SHOW_MORE_BTN_STYLE = {
-    "background": "white",
+    "background": COLORS["card_bg"],
     "color": COLORS["primary_bright"],
     "border": f"1.5px solid {COLORS['primary_bright']}",
     "borderRadius": "0.5rem",

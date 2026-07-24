@@ -32,7 +32,7 @@ def layout():
                 ),
             ],
             style={
-                "background": "white",
+                "background": COLORS["card_bg"],
                 "borderRadius": "0.625rem",
                 "padding": "1.5rem",
                 "textAlign": "center",
@@ -60,7 +60,7 @@ def layout():
                    style={"margin": "0.25rem 0", "color": COLORS["text_secondary"]}),
         ],
         style={
-            "background": "white",
+            "background": COLORS["card_bg"],
             "borderRadius": "0.625rem",
             "padding": "1.5rem",
             "boxShadow": "0 1px 3px rgba(0,0,0,0.07)",

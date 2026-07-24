@@ -62,7 +62,7 @@ def layout():
         html.Div(
             grid,
             style={
-                "background": "white",
+                "background": COLORS["card_bg"],
                 "borderRadius": "0.625rem",
                 "padding": "1.25rem",
                 "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",

@@ -33,7 +33,7 @@ def _text(value, default="—") -> str:
 
 
 CARD_STYLE = {
-    "background": "white",
+    "background": COLORS["card_bg"],
     "borderRadius": "0.625rem",
     "padding": "1rem 1.125rem",
     "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",
@@ -431,7 +431,7 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
                     style={
                         "background": COLORS["success_light"], "padding": "0.5rem 0.75rem",
                         "borderRadius": "0.375rem", "marginBottom": "0.5rem", "fontSize": "0.875rem",
-                        "color": "#166534",
+                        "color": COLORS["success"],
                     },
                 ))
 
@@ -542,7 +542,7 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
             ),
         ],
         style={
-            "background": "white", "borderRadius": "0.625rem", "padding": "1.5rem",
+            "background": COLORS["card_bg"], "borderRadius": "0.625rem", "padding": "1.5rem",
             "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",
         },
     )

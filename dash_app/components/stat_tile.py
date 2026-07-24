@@ -48,7 +48,7 @@ def stat_tile(
     return html.Div(
         children,
         style={
-            "background": "white",
+            "background": COLORS["card_bg"],
             "borderRadius": "0.625rem",
             "padding": "1.25rem 1.5rem",
             "borderLeft": f"4px solid {accent}",

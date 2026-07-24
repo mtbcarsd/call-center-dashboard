@@ -35,7 +35,7 @@ def render_trends_result(result: dict | None, error: str | None) -> html.Div:
         return html.Div(
             children,
             style={
-                "background": "white",
+                "background": COLORS["card_bg"],
                 "borderRadius": "0.625rem",
                 "padding": "1.25rem",
                 "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",
@@ -61,11 +61,11 @@ def render_trends_result(result: dict | None, error: str | None) -> html.Div:
             html.Div(
                 [html.Span("💡 ", style={"fontSize": "1.1rem"}), r],
                 style={
-                    "background": "#F0FDF4",
+                    "background": COLORS["success_light"],
                     "borderLeft": f"4px solid {COLORS['success']}",
                     "padding": "0.75rem 1rem",
                     "borderRadius": "0.375rem",
-                    "color": "#166534",
+                    "color": COLORS["success"],
                     "marginBottom": "0.5rem",
                     "fontSize": "0.9rem",
                 },

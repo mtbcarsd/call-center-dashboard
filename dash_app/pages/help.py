@@ -18,7 +18,7 @@ dash.register_page(__name__, path="/help", name="Справка", order=7)
 
 def _card(children, extra_style=None):
     style = {
-        "background": "white",
+        "background": COLORS["card_bg"],
         "borderRadius": "0.625rem",
         "padding": "1.25rem 1.5rem",
         "boxShadow": "0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04)",
@@ -104,7 +104,7 @@ def _page_tour_grid():
     cards = []
     for icon, title, desc, employee_only in _PAGES_TOUR:
         style = {
-            "background": "white", "border": f"1px solid {COLORS['border']}", "borderRadius": "0.625rem",
+            "background": COLORS["card_bg"], "border": f"1px solid {COLORS['border']}", "borderRadius": "0.625rem",
             "padding": "1rem 1.1rem", "flex": "1", "minWidth": "220px",
         }
         if employee_only:
@@ -187,7 +187,7 @@ def _advantages_list():
         items.append(html.Div(
             children,
             style={
-                "background": "white", "border": f"1px solid {COLORS['border']}",
+                "background": COLORS["card_bg"], "border": f"1px solid {COLORS['border']}",
                 "borderLeft": f"3px solid {COLORS['primary_bright']}", "borderRadius": "0.5rem",
                 "padding": "0.9rem 1.1rem",
             },

@@ -26,10 +26,20 @@ app = dash.Dash(
 server = app.server
 server.secret_key = os.environ.get("DASH_SECRET_KEY") or secrets.token_hex(32)
 
-# Глобальный CSS поверх Dash-index (2026-07-24, редизайн под стиль справки):
-# заголовки ag-grid и focus-visible — единственное, что не выразить инлайн-стилями
-# React-компонентов. Данные в сетках остаются на body/mono шрифте (не serif) —
-# засечки на плотной таблице только мешают считыванию, см. dash_app/colors.py.
+# Глобальный CSS поверх Dash-index (2026-07-24, редизайн под стиль справки +
+# 2026-07-25, светлая/тёмная тема): заголовки ag-grid, focus-visible и сами
+# CSS-переменные темы — единственное, что не выразить инлайн-стилями React-
+# компонентов. Токены COLORS в dash_app/colors.py (bg/card_bg/text_*/border/
+# *_light) указывают на эти же var(--...) — поэтому переключение темы
+# перекрашивает всё приложение без единой правки в самих страницах: только
+# semantic-акценты (success/warning/danger/primary_bright и т.д.) и Plotly-
+# фигуры остаются на фиксированных hex — Plotly не умеет резолвить CSS-
+# переменные, поэтому графики сознательно не перекрашиваются вместе с темой
+# (см. dash_app/components/gauge_tile.py).
+#
+# Скрипт в <head> выставляет data-theme СИНХРОННО до первой отрисовки — иначе
+# было бы заметно мигание светлой темой перед тем, как отработает clientside
+# callback переключателя.
 app.index_string = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -37,13 +47,63 @@ app.index_string = f"""<!DOCTYPE html>
 <title>{{%title%}}</title>
 {{%favicon%}}
 {{%css%}}
+<script>
+(function () {{
+  try {{
+    var t = localStorage.getItem('theme');
+    if (!t) {{
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }}
+    document.documentElement.setAttribute('data-theme', t);
+  }} catch (e) {{}}
+}})();
+</script>
 <style>
+  :root {{
+    --paper: #F1F4F8; --surface: #FFFFFF; --nav-bg: #1E293B;
+    --ink: #0F172A; --muted: #475569; --faint: #7C8AA0; --line: #E2E8F0;
+    --brand-wash: #DBEAFE; --good-wash: #DCFCE7; --warn-wash: #FEF3C7; --bad-wash: #FEE2E2;
+    color-scheme: light;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root {{
+      --paper: #0A0F1A; --surface: #121A2B; --nav-bg: #0B1220;
+      --ink: #E7ECF5; --muted: #9AA8C0; --faint: #64728A; --line: #223049;
+      --brand-wash: #16233D; --good-wash: #10281A; --warn-wash: #2E2408; --bad-wash: #301213;
+      color-scheme: dark;
+    }}
+  }}
+  :root[data-theme="dark"] {{
+    --paper: #0A0F1A; --surface: #121A2B; --nav-bg: #0B1220;
+    --ink: #E7ECF5; --muted: #9AA8C0; --faint: #64728A; --line: #223049;
+    --brand-wash: #16233D; --good-wash: #10281A; --warn-wash: #2E2408; --bad-wash: #301213;
+    color-scheme: dark;
+  }}
+  :root[data-theme="light"] {{
+    --paper: #F1F4F8; --surface: #FFFFFF; --nav-bg: #1E293B;
+    --ink: #0F172A; --muted: #475569; --faint: #7C8AA0; --line: #E2E8F0;
+    --brand-wash: #DBEAFE; --good-wash: #DCFCE7; --warn-wash: #FEF3C7; --bad-wash: #FEE2E2;
+    color-scheme: light;
+  }}
+  body {{ background: var(--paper); transition: background-color 0.15s ease; }}
+
   .ag-theme-alpine .ag-header-cell-label {{
     font-family: {FONTS["mono"]};
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: {COLORS["text_secondary"]};
+  }}
+  [data-theme="dark"] .ag-theme-alpine {{
+    --ag-background-color: var(--surface);
+    --ag-foreground-color: var(--ink);
+    --ag-header-background-color: #17223a;
+    --ag-header-foreground-color: var(--muted);
+    --ag-border-color: var(--line);
+    --ag-secondary-border-color: var(--line);
+    --ag-input-border-color: var(--line);
+    --ag-row-hover-color: rgba(255,255,255,0.04);
+    --ag-odd-row-background-color: rgba(255,255,255,0.02);
   }}
   a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {{
     outline: 2px solid {COLORS["primary_bright"]};
@@ -70,28 +130,41 @@ _LOGIN_HTML = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Войти — Call Center Analytics</title>
   <style>
+    :root {
+      --paper: #F1F4F8; --surface: #FFFFFF; --ink: #0F172A; --muted: #475569;
+      --line: #E2E8F0; --bad-wash: #FEE2E2; --bad-line: #FECACA; --bad-ink: #B91C1C;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #0A0F1A; --surface: #121A2B; --ink: #E7ECF5; --muted: #9AA8C0;
+        --line: #223049; --bad-wash: #301213; --bad-line: #4A1E1E; --bad-ink: #F87171;
+        color-scheme: dark;
+      }
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #F1F4F8;
+      background: var(--paper);
       display: flex; align-items: center; justify-content: center; min-height: 100vh;
     }
     .card {
-      background: #fff; border-radius: 0.75rem; padding: 2.5rem 2.75rem;
+      background: var(--surface); border-radius: 0.75rem; padding: 2.5rem 2.75rem;
       box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
       width: 100%; max-width: 390px;
     }
     .logo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.75rem; }
     .logo-icon { font-size: 1.75rem; }
-    .logo-text { font-family: Georgia, 'Times New Roman', serif; font-size: 1.05rem; color: #0F172A; }
-    h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 1.5rem; color: #0F172A; margin-bottom: 0.25rem; }
-    .subtitle { font-size: 0.875rem; color: #475569; margin-bottom: 1.75rem; }
-    label { display: block; font-size: 0.8125rem; font-weight: 600; color: #374151;
+    .logo-text { font-family: Georgia, 'Times New Roman', serif; font-size: 1.05rem; color: var(--ink); }
+    h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 1.5rem; color: var(--ink); margin-bottom: 0.25rem; }
+    .subtitle { font-size: 0.875rem; color: var(--muted); margin-bottom: 1.75rem; }
+    label { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--muted);
             margin-bottom: 0.375rem; }
     input[type=text], input[type=password] {
-      width: 100%; padding: 0.625rem 0.875rem; border: 1.5px solid #E2E8F0;
+      width: 100%; padding: 0.625rem 0.875rem; border: 1.5px solid var(--line);
       border-radius: 0.5rem; font-size: 0.9375rem; font-family: inherit;
-      outline: none; transition: border-color 0.15s, box-shadow 0.15s; color: #0F172A;
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s; color: var(--ink);
+      background: var(--surface);
     }
     input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
     .field { margin-bottom: 1.125rem; }
@@ -103,7 +176,7 @@ _LOGIN_HTML = """<!DOCTYPE html>
     }
     .btn:hover { background: #1D4ED8; }
     .error {
-      color: #B91C1C; background: #FEE2E2; border: 1px solid #FECACA;
+      color: var(--bad-ink); background: var(--bad-wash); border: 1px solid var(--bad-line);
       padding: 0.75rem 1rem; border-radius: 0.5rem;
       font-size: 0.875rem; margin-bottom: 1.25rem;
     }
@@ -246,9 +319,29 @@ app.layout = html.Div(
                     style={"display": "flex", "gap": "0.25rem", "flexWrap": "wrap"},
                 ),
                 html.Div(
-                    id="nav-user",
-                    style={"display": "flex", "alignItems": "center", "gap": "0.75rem",
-                           "flexShrink": "0"},
+                    [
+                        html.Button(
+                            "🌙",
+                            id="theme-toggle-btn",
+                            n_clicks=0,
+                            title="Переключить светлую/тёмную тему",
+                            style={
+                                "background": "transparent",
+                                "border": "1px solid rgba(255,255,255,0.25)",
+                                "borderRadius": "0.375rem",
+                                "color": "white",
+                                "cursor": "pointer",
+                                "fontSize": "0.9rem",
+                                "padding": "0.3rem 0.55rem",
+                                "lineHeight": "1",
+                            },
+                        ),
+                        html.Div(
+                            id="nav-user",
+                            style={"display": "flex", "alignItems": "center", "gap": "0.75rem"},
+                        ),
+                    ],
+                    style={"display": "flex", "alignItems": "center", "gap": "0.75rem", "flexShrink": "0"},
                 ),
             ],
             style={
@@ -331,6 +424,32 @@ def update_nav(pathname: str):
         nav_user = []
 
     return nav_links, nav_user
+
+
+# ── Переключатель светлой/тёмной темы ─────────────────────────────────────────
+# Чисто clientside: нет смысла гонять выбор темы на сервер и обратно. Не
+# использует dcc.Store — персистентность через свой localStorage['theme']
+# напрямую (тот же ключ, что читает anti-FOUC скрипт в index_string), чтобы не
+# зависеть от точного внутреннего формата, в котором dcc.Store(storage_type=
+# "local") сериализует данные.
+dash.clientside_callback(
+    """
+    function(n_clicks) {
+        const root = document.documentElement;
+        const wasTriggered = window.dash_clientside.callback_context.triggered.length > 0;
+        let theme = root.getAttribute('data-theme') || 'light';
+        if (wasTriggered) {
+            theme = (theme === 'dark') ? 'light' : 'dark';
+            root.setAttribute('data-theme', theme);
+            try { localStorage.setItem('theme', theme); } catch (e) {}
+        }
+        return theme === 'dark' ? '☀️' : '🌙';
+    }
+    """,
+    Output("theme-toggle-btn", "children"),
+    Input("theme-toggle-btn", "n_clicks"),
+    prevent_initial_call=False,
+)
 
 
 if __name__ == "__main__":

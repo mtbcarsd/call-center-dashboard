@@ -1,24 +1,35 @@
+# Ключи ниже, указывающие на var(--...), резолвятся браузером по CSS-каскаду,
+# определённому в dash_app/app.py::app.index_string (:root/@media(prefers-
+# color-scheme)/[data-theme]) — переключение темы (2026-07-25) перекрашивает
+# всё, что через них стилизовано, без единой правки в самих страницах.
+#
+# Акцентные/семантические цвета (primary, success/warning/danger, chart series,
+# kpi_*) СОЗНАТЕЛЬНО остаются raw hex, не var(): часть из них попадает прямо в
+# Plotly-фигуры (marker_color, gauge bar color и т.п.), а Plotly не умеет
+# резолвить CSS custom properties — передать ему "var(--x)" вместо реального
+# цвета либо ничего не нарисует, либо упадёт. Поэтому графики держатся на
+# фиксированной палитре независимо от темы (см. components/gauge_tile.py).
 COLORS = {
     # Brand
     "primary": "#1E3A8A",
     "primary_bright": "#2563EB",
-    "primary_light": "#DBEAFE",
+    "primary_light": "var(--brand-wash)",
     # Status
     "success": "#15803D",
-    "success_light": "#DCFCE7",
+    "success_light": "var(--good-wash)",
     "warning": "#B45309",
-    "warning_light": "#FEF3C7",
+    "warning_light": "var(--warn-wash)",
     "danger": "#B91C1C",
-    "danger_light": "#FEE2E2",
+    "danger_light": "var(--bad-wash)",
     "neutral": "#6B7280",
     # Layout
-    "bg": "#F1F4F8",
-    "card_bg": "#FFFFFF",
-    "nav_bg": "#1E293B",
-    "text_primary": "#0F172A",
-    "text_secondary": "#475569",
-    "faint": "#7C8AA0",
-    "border": "#E2E8F0",
+    "bg": "var(--paper)",
+    "card_bg": "var(--surface)",
+    "nav_bg": "var(--nav-bg)",
+    "text_primary": "var(--ink)",
+    "text_secondary": "var(--muted)",
+    "faint": "var(--faint)",
+    "border": "var(--line)",
     # Chart series
     "operator": "#2563EB",
     "client": "#F59E0B",
