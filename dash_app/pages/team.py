@@ -6,6 +6,7 @@ import dash
 from dash import html
 
 from dash_app.colors import COLORS
+from dash_app.components.page_header import page_header, section_header
 
 dash.register_page(__name__, path="/team", name="Команда", order=5)
 
@@ -69,14 +70,8 @@ def layout():
     )
 
     return html.Div([
-        html.H2(
-            "👥 Команда разработчиков",
-            style={"color": COLORS["text_primary"], "margin": "0 0 1.5rem 0", "fontWeight": "700"},
-        ),
+        page_header("👥", "Команда разработчиков"),
         org_card,
-        html.H4(
-            "Участники команды",
-            style={"color": COLORS["text_primary"], "fontWeight": "600", "marginBottom": "1rem"},
-        ),
+        section_header("Участники команды"),
         html.Div(member_cards, style={"display": "flex", "gap": "1rem", "flexWrap": "wrap"}),
     ])

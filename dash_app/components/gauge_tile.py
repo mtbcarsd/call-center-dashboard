@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from dash import dcc, html
 
-from dash_app.colors import COLORS, CHART_FONT
+from dash_app.colors import COLORS, CHART_FONT, FONTS
 
 
 def gauge_tile(label: str, value_pct: float, good: float = 75, warn: float = 50) -> html.Div:
@@ -51,11 +51,11 @@ def gauge_tile(label: str, value_pct: float, good: float = 75, warn: float = 50)
             html.P(
                 label,
                 style={
-                    "fontSize": "0.7rem",
-                    "fontWeight": "700",
+                    "fontFamily": FONTS["mono"],
+                    "fontSize": "0.68rem",
                     "color": COLORS["text_secondary"],
                     "textTransform": "uppercase",
-                    "letterSpacing": "0.08em",
+                    "letterSpacing": "0.1em",
                     "margin": "0",
                 },
             ),

@@ -21,6 +21,7 @@ from dash_app.coaching_logic import render_coaching_result
 from dash_app.colors import COLORS
 from dash_app.components.cell_format import pct_cell, score_cell
 from dash_app.components.gauge_tile import gauge_tile
+from dash_app.components.page_header import page_header, section_header
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import checklist_pass_rates, load_calls, parse_checklist
 
@@ -42,18 +43,11 @@ def _card(children):
     )
 
 
-def _section_h(text: str):
-    return html.H4(
-        text,
-        style={"color": COLORS["text_primary"], "fontWeight": "600", "marginBottom": "0.75rem"},
-    )
-
-
 def layout():
     operator = get_current_operator_match_name()
     if not operator:
         return html.Div([
-            html.H2("🙋 Мой кабинет", style={"color": COLORS["text_primary"], "fontWeight": "700"}),
+            page_header("🙋", "Мой кабинет"),
             html.P(
                 "Ваша учётная запись не привязана к оператору. Обратитесь к администратору.",
                 style={"color": COLORS["text_secondary"]},
@@ -62,16 +56,7 @@ def layout():
 
     df = load_calls(operator_match_name=operator)
 
-    header = html.Div([
-        html.H2(
-            f"🙋 Мой кабинет — {operator}",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            f"{len(df)} звонков",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
-    ])
+    header = page_header("🙋", f"Мой кабинет — {operator}", f"{len(df)} звонков")
 
     if df.empty:
         return html.Div([header, html.P("Звонков пока нет.", style={"color": COLORS["text_secondary"]})])
@@ -108,7 +93,7 @@ def layout():
             for item in CHECKLIST
         ]).sort_values("Прохождение (%)", ascending=True)
         checklist_section = _card([
-            _section_h("Мой чек-лист"),
+            section_header("Мой чек-лист"),
             dag.AgGrid(
                 rowData=rating_df.to_dict("records"),
                 columnDefs=[
@@ -129,7 +114,7 @@ def layout():
     table_df.columns = ["Тема", "Тип", "Срочность", "Статус", "Оценка", "Клиент"]
 
     calls_section = _card([
-        _section_h("Мои звонки"),
+        section_header("Мои звонки"),
         dag.AgGrid(
             rowData=table_df.to_dict("records"),
             columnDefs=[
@@ -148,7 +133,7 @@ def layout():
     ])
 
     coaching_section = _card([
-        _section_h("🎯 Рекомендации по обучению"),
+        section_header("🎯 Рекомендации по обучению"),
         html.P(
             "LLM-агент анализирует ваш чек-лист и compliance-историю и даёт краткую обратную связь.",
             style={"color": COLORS["text_secondary"], "fontSize": "0.875rem", "marginBottom": "1rem"},

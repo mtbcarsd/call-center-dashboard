@@ -25,6 +25,7 @@ from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 from dash_app.auth import get_current_department, get_current_user
 from dash_app.calls_logic import AUDIO_PLAYER_ID, render_call_card, render_call_detail
 from dash_app.colors import COLORS
+from dash_app.components.page_header import page_header
 from dash_app.data import (
     add_comment,
     load_call_labels,
@@ -63,10 +64,7 @@ def layout():
     df = load_calls(department=get_current_department())
 
     return html.Div([
-        html.H2(
-            "📁 Звонки",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
+        page_header("📁", "Звонки"),
         html.Div(
             [
                 html.P(

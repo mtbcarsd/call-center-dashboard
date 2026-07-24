@@ -11,6 +11,7 @@ from dash import html, dcc, callback, Input, Output, State
 
 from dash_app.auth import get_current_department, get_current_user
 from dash_app.colors import COLORS
+from dash_app.components.page_header import page_header
 from dash_app.data import load_calls
 from dash_app.trends_logic import render_trends_result
 
@@ -42,14 +43,10 @@ def layout():
         )]
 
     return html.Div([
-        html.H2(
-            "📈 Тренды",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
+        page_header(
+            "📈", "Тренды",
             "LLM-агент анализирует резюме и темы последних звонков, ищет повторяющиеся паттерны "
             "и узкие места. Запрос идёт к сервису api (LLM — Groq).",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
         ),
         *dept_note,
         html.Div(

@@ -9,6 +9,7 @@ from dash import html
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.components.cell_format import score_cell
+from dash_app.components.page_header import page_header
 from dash_app.data import load_calls
 
 dash.register_page(__name__, path="/operators", name="Операторы", order=1)
@@ -21,7 +22,7 @@ def layout():
 
     if named_df.empty:
         return html.Div([
-            html.H2("🧑‍💼 Операторы", style={"color": COLORS["text_primary"], "fontWeight": "700"}),
+            page_header("🧑‍💼", "Операторы"),
             html.P(
                 "Пока ни один звонок не привязан к оператору. "
                 "Укажите имя в деталке звонка (вкладка «Звонки»).",
@@ -57,14 +58,7 @@ def layout():
         subtitle += f" · {unnamed_count} ещё без имени"
 
     return html.Div([
-        html.H2(
-            "🧑‍💼 Статистика по операторам",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            subtitle,
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
+        page_header("🧑‍💼", "Статистика по операторам", subtitle),
         html.Div(
             grid,
             style={

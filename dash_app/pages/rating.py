@@ -11,6 +11,7 @@ from checklist import CHECKLIST
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.components.cell_format import pct_cell
+from dash_app.components.page_header import page_header, section_header
 from dash_app.data import load_calls, parse_checklist, checklist_pass_rates
 
 dash.register_page(__name__, path="/rating", name="Рейтинг", order=2)
@@ -22,7 +23,7 @@ def layout():
 
     if not all_checklists:
         return html.Div([
-            html.H2("🏆 Рейтинг", style={"color": COLORS["text_primary"], "fontWeight": "700"}),
+            page_header("🏆", "Рейтинг"),
             html.P("Нет данных чек-листа ни по одному звонку.", style={"color": COLORS["text_secondary"]}),
         ])
 
@@ -102,11 +103,7 @@ def layout():
                 className="ag-theme-alpine",
             )
             op_section = [
-                html.H4(
-                    "По операторам",
-                    style={"color": COLORS["text_primary"], "fontWeight": "600",
-                           "marginTop": "1.5rem", "marginBottom": "0.75rem"},
-                ),
+                html.Div(section_header("По операторам"), style={"marginTop": "1.5rem"}),
                 op_grid,
             ]
 
@@ -117,14 +114,7 @@ def layout():
     card_children.extend(op_section)
 
     return html.Div([
-        html.H2(
-            "🏆 Рейтинг по чек-листу",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            f"Разбивка по {len(CHECKLIST)} пунктам · {len(df)} звонков",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
+        page_header("🏆", "Рейтинг по чек-листу", f"Разбивка по {len(CHECKLIST)} пунктам · {len(df)} звонков"),
         html.Div(
             card_children,
             style={

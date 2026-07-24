@@ -13,7 +13,7 @@ from dash import html, dcc, callback, Input, Output
 from flask import redirect, render_template_string, request, session
 
 from dash_app.auth import get_current_user, get_user_from_db, verify_password
-from dash_app.colors import COLORS
+from dash_app.colors import COLORS, FONTS
 
 app = dash.Dash(
     __name__,
@@ -26,6 +26,41 @@ app = dash.Dash(
 server = app.server
 server.secret_key = os.environ.get("DASH_SECRET_KEY") or secrets.token_hex(32)
 
+# Глобальный CSS поверх Dash-index (2026-07-24, редизайн под стиль справки):
+# заголовки ag-grid и focus-visible — единственное, что не выразить инлайн-стилями
+# React-компонентов. Данные в сетках остаются на body/mono шрифте (не serif) —
+# засечки на плотной таблице только мешают считыванию, см. dash_app/colors.py.
+app.index_string = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+{{%metas%}}
+<title>{{%title%}}</title>
+{{%favicon%}}
+{{%css%}}
+<style>
+  .ag-theme-alpine .ag-header-cell-label {{
+    font-family: {FONTS["mono"]};
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: {COLORS["text_secondary"]};
+  }}
+  a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {{
+    outline: 2px solid {COLORS["primary_bright"]};
+    outline-offset: 2px;
+  }}
+</style>
+</head>
+<body>
+{{%app_entry%}}
+<footer>
+{{%config%}}
+{{%scripts%}}
+{{%renderer%}}
+</footer>
+</body>
+</html>"""
+
 # ── Страница логина ───────────────────────────────────────────────────────────
 
 _LOGIN_HTML = """<!DOCTYPE html>
@@ -37,8 +72,8 @@ _LOGIN_HTML = """<!DOCTYPE html>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #F0F4F8;
+      font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #F1F4F8;
       display: flex; align-items: center; justify-content: center; min-height: 100vh;
     }
     .card {
@@ -48,8 +83,8 @@ _LOGIN_HTML = """<!DOCTYPE html>
     }
     .logo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.75rem; }
     .logo-icon { font-size: 1.75rem; }
-    .logo-text { font-size: 1rem; font-weight: 700; color: #0F172A; }
-    h1 { font-size: 1.3rem; font-weight: 700; color: #0F172A; margin-bottom: 0.25rem; }
+    .logo-text { font-family: Georgia, 'Times New Roman', serif; font-size: 1.05rem; color: #0F172A; }
+    h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 1.5rem; color: #0F172A; margin-bottom: 0.25rem; }
     .subtitle { font-size: 0.875rem; color: #475569; margin-bottom: 1.75rem; }
     label { display: block; font-size: 0.8125rem; font-weight: 600; color: #374151;
             margin-bottom: 0.375rem; }
@@ -201,7 +236,7 @@ app.layout = html.Div(
                         html.Span("📞", style={"fontSize": "1.3rem", "marginRight": "0.5rem"}),
                         html.Span(
                             "Call Center Analytics",
-                            style={"fontWeight": "700", "fontSize": "1rem", "color": "white"},
+                            style={"fontFamily": FONTS["display"], "fontSize": "1.05rem", "color": "white"},
                         ),
                     ],
                     style={"display": "flex", "alignItems": "center", "flexShrink": "0"},
@@ -238,7 +273,7 @@ app.layout = html.Div(
         ),
     ],
     style={
-        "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        "fontFamily": FONTS["body"],
         "margin": "0",
     },
 )

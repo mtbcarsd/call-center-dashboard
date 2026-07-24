@@ -1,15 +1,17 @@
-"""Страница «Справка» — как пользоваться дашбордом + чем он сильнее конкурента.
+"""Страница «Справка» — как пользоваться дашбордом, чем он сильнее конкурента,
+таблица сравнения и используемый стек.
 
 Статический контент (без БД) — та же структура, что в артефакте, который
 показывали пользователю отдельно (2026-07-24), перенесённая в сами компоненты
-Dash в стиле остального приложения (COLORS, карточки с тенью), а не отдельный
-HTML/CSS-документ. Видна всем ролям, включая employee — это просто справочная
-информация, не чужие данные.
+Dash в стиле остального приложения (COLORS/FONTS, карточки с тенью), а не
+отдельный HTML/CSS-документ. Видна всем ролям, включая employee — это просто
+справочная информация, не чужие данные.
 """
 import dash
 from dash import html
 
-from dash_app.colors import COLORS
+from dash_app.colors import COLORS, FONTS
+from dash_app.components.page_header import page_header, section_header
 
 dash.register_page(__name__, path="/help", name="Справка", order=7)
 
@@ -24,13 +26,6 @@ def _card(children, extra_style=None):
     if extra_style:
         style.update(extra_style)
     return html.Div(children, style=style)
-
-
-def _section_h(text: str):
-    return html.H3(
-        text,
-        style={"color": COLORS["text_primary"], "fontWeight": "700", "margin": "0 0 1rem 0", "fontSize": "1.1rem"},
-    )
 
 
 _ROLE_CHIP_COLORS = {
@@ -59,24 +54,29 @@ _ACCOUNTS = [
 ]
 
 
+def _th(text: str) -> html.Th:
+    return html.Th(text, style={
+        "textAlign": "left", "padding": "0.6rem 0.9rem", "fontFamily": FONTS["mono"],
+        "fontSize": "0.68rem", "letterSpacing": "0.08em", "textTransform": "uppercase",
+        "color": COLORS["text_secondary"], "borderBottom": f"1px solid {COLORS['border']}",
+        "whiteSpace": "nowrap",
+    })
+
+
+def _td(children, **extra) -> html.Td:
+    style = {"padding": "0.6rem 0.9rem", "borderBottom": f"1px solid {COLORS['border']}", "fontSize": "0.875rem"}
+    style.update(extra)
+    return html.Td(children, style=style)
+
+
 def _credentials_table():
-    header = html.Tr([
-        html.Th(h, style={
-            "textAlign": "left", "padding": "0.6rem 0.9rem", "fontSize": "0.7rem",
-            "letterSpacing": "0.06em", "textTransform": "uppercase", "color": COLORS["text_secondary"],
-            "borderBottom": f"1px solid {COLORS['border']}",
-        })
-        for h in ["Логин", "Пароль", "Роль", "Что видно"]
-    ])
+    header = html.Tr([_th(h) for h in ["Логин", "Пароль", "Роль", "Что видно"]])
     rows = [
         html.Tr([
-            html.Td(html.Code(login), style={"padding": "0.6rem 0.9rem", "borderBottom": f"1px solid {COLORS['border']}"}),
-            html.Td(html.Code(pwd), style={"padding": "0.6rem 0.9rem", "borderBottom": f"1px solid {COLORS['border']}"}),
-            html.Td(_role_chip(role), style={"padding": "0.6rem 0.9rem", "borderBottom": f"1px solid {COLORS['border']}"}),
-            html.Td(desc, style={
-                "padding": "0.6rem 0.9rem", "borderBottom": f"1px solid {COLORS['border']}",
-                "fontSize": "0.875rem", "color": COLORS["text_secondary"],
-            }),
+            _td(html.Code(login, style={"fontFamily": FONTS["mono"]})),
+            _td(html.Code(pwd, style={"fontFamily": FONTS["mono"]})),
+            _td(_role_chip(role)),
+            _td(desc, color=COLORS["text_secondary"]),
         ])
         for login, pwd, role, desc in _ACCOUNTS
     ]
@@ -118,7 +118,7 @@ def _page_tour_grid():
             children.append(html.Div(
                 "только role=employee",
                 style={
-                    "fontFamily": "monospace", "fontSize": "0.65rem", "color": COLORS["success"],
+                    "fontFamily": FONTS["mono"], "fontSize": "0.65rem", "color": COLORS["success"],
                     "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0.5rem",
                 },
             ))
@@ -195,6 +195,115 @@ def _advantages_list():
     return html.Div(items, style={"display": "flex", "flexDirection": "column", "gap": "0.75rem"})
 
 
+# ── Сравнение с конкурентом ────────────────────────────────────────────────
+# Источник: демо-встреча банка с вендором речевой аналитики, 06.07.2026 (см.
+# SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md → «Что показал конкурент»). ❔ — не
+# демонстрировалось на встрече, поэтому не берёмся утверждать ни «есть», ни «нет».
+_STATUS_STYLE = {
+    "✅": COLORS["success"], "◐": COLORS["warning"], "❌": COLORS["neutral"], "❔": COLORS["faint"],
+}
+
+_COMPARISON_ROWS = [
+    ("Чек-лист качества с весами", "✅", "Кастомные категории (checklist.py)",
+     "✅", "+ LLM сам пишет промпт, поддержка морфологии слов"),
+    ("Пауза/тишина в диалоге", "✅", "silence_pct, pause_count в каждом звонке",
+     "✅", "+ настраиваемый порог и льготный период"),
+    ("Диаризация оператор/клиент", "✅", "pyannote, включая моно-записи",
+     "✅", "Заявлено в демо"),
+    ("Compliance-проверка", "✅", "regex (мгновенно) + LLM (нюансы) вместе",
+     "❔", "Не детализировано в демо"),
+    ("Оценка звонка", "✅", "4 независимых агента, не единый балл",
+     "◐", "Единая оценка + copilot-подсказки"),
+    ("Ролевой доступ (директор/начальник/сотрудник)", "✅", "Server-side SQL-фильтр",
+     "❔", "Не показывали в демо"),
+    ("Личный кабинет оператора с рекомендациями", "✅", "LLM-коучинг, self-service",
+     "✅", "Автоотчёты через LLM — но для супервайзера, не оператора"),
+    ("Ручной override оценки с историей", "◐", "QA-оценка отдельно от AI, с Δ, без версий",
+     "✅", "Пометка «M» + история изменений"),
+    ("Детекция негатива по позиции в звонке", "❌", "Не реализовано",
+     "✅", "Отдельная ML-модель, обучена на размеченных данных"),
+    ("AI-копайлот на естественном языке", "❌", "Не реализовано",
+     "✅", "«Покажи звонки Иванова за вчера» → фильтр"),
+    ("Конструктор графиков", "❌", "Фиксированные страницы",
+     "✅", "Drag-and-drop"),
+    ("Геймификация/рейтинг среди коллег", "◐", "Рейтинг по чек-листу, без явной геймификации",
+     "✅", "Личный рейтинг оператора"),
+    ("Тренировочный бот", "❌", "Не реализовано",
+     "✅", "Цифровой клиент + суфлёр"),
+    ("Архитектура", "✅", "Self-hosted, открытые LLM-провайдеры, без lock-in",
+     "❔", "Вендорское решение под ключ"),
+]
+
+
+def _status_cell(icon: str, note: str) -> html.Td:
+    return _td(
+        html.Div([
+            html.Span(icon, style={"color": _STATUS_STYLE.get(icon, COLORS["text_primary"]), "fontWeight": "700", "marginRight": "0.4rem"}),
+            html.Span(note, style={"color": COLORS["text_secondary"]}),
+        ]),
+    )
+
+
+def _comparison_table():
+    header = html.Tr([_th(h) for h in ["Возможность", "Наш дашборд", "Конкурент (демо 06.07.2026)"]])
+    rows = [
+        html.Tr([
+            _td(feature, color=COLORS["text_primary"], fontWeight="600"),
+            _status_cell(us_icon, us_note),
+            _status_cell(comp_icon, comp_note),
+        ])
+        for feature, us_icon, us_note, comp_icon, comp_note in _COMPARISON_ROWS
+    ]
+    legend = html.P(
+        "✅ есть  ·  ◐ частично  ·  ❌ нет  ·  ❔ не демонстрировалось, не утверждаем",
+        style={"fontSize": "0.78rem", "color": COLORS["faint"], "marginTop": "0.9rem", "marginBottom": "0"},
+    )
+    return html.Div([
+        html.Div(
+            html.Table([html.Thead(header), html.Tbody(rows)], style={"width": "100%", "borderCollapse": "collapse"}),
+            style={"overflowX": "auto"},
+        ),
+        legend,
+    ])
+
+
+# ── Технологический стек ───────────────────────────────────────────────────
+
+_STACK = [
+    ("Backend / API", "Python 3.12 · FastAPI (api) · Flask-сессии (Dash-сервер)"),
+    ("Дашборд / BI", "Plotly Dash · dash-ag-grid · Plotly"),
+    ("Распознавание речи", "OpenAI Whisper (транскрипция) · pyannote.audio (диаризация оператор/клиент)"),
+    ("LLM-агенты", "4 независимых агента (classifier / quality / compliance / summarizer) + trends + "
+                    "coaching, через OpenAI-совместимый API (Groq в проде, Ollama локально)"),
+    ("База данных", "PostgreSQL"),
+    ("Хранилище аудио", "S3-совместимый бакет (Railway Bucket)"),
+    ("Инфраструктура", "Docker · gunicorn · Railway"),
+    ("Авторизация", "Flask-сессии + bcrypt, ролевой доступ на сервере"),
+]
+
+
+def _stack_grid():
+    rows = [
+        html.Div(
+            [
+                html.Div(layer, style={
+                    "fontFamily": FONTS["mono"], "fontSize": "0.72rem", "letterSpacing": "0.06em",
+                    "textTransform": "uppercase", "color": COLORS["primary_bright"],
+                    "minWidth": "180px", "flexShrink": "0",
+                }),
+                html.Div(techs, style={"fontSize": "0.9rem", "color": COLORS["text_primary"]}),
+            ],
+            style={
+                "display": "flex", "gap": "1rem", "padding": "0.75rem 0",
+                "borderBottom": f"1px solid {COLORS['border']}", "flexWrap": "wrap",
+            },
+        )
+        for layer, techs in _STACK
+    ]
+    rows[-1].style["borderBottom"] = "none"
+    return html.Div(rows)
+
+
 _GAPS = [
     "Детекция негатива по позиции в звонке (начало/середина/конец)",
     "AI-копайлот на естественном языке",
@@ -225,24 +334,19 @@ def _gaps_block():
 
 def layout():
     return html.Div([
-        html.H2(
-            "ℹ️ Справка",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            "Как пользоваться дашбордом и чем он сильнее конкурентов.",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
+        page_header("ℹ️", "Справка", "Как пользоваться дашбордом, чем он сильнее конкурентов и на чём собран."),
 
-        _card([_section_h("Доступ"), _credentials_table()], {"marginBottom": "1.5rem"}),
-        _card([_section_h("Разделы дашборда"), _page_tour_grid()], {"marginBottom": "1.5rem"}),
-        _card([_section_h("Чем сильнее конкурентов"), _advantages_list()], {"marginBottom": "1.5rem"}),
-        _card([_section_h("Что пока нет — честно"), _gaps_block()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Доступ"), _credentials_table()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Разделы дашборда"), _page_tour_grid()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Чем сильнее конкурентов"), _advantages_list()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Сравнение с конкурентом"), _comparison_table()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Технологический стек"), _stack_grid()], {"marginBottom": "1.5rem"}),
+        _card([section_header("Что пока нет — честно"), _gaps_block()], {"marginBottom": "1.5rem"}),
 
         html.P(
             [
                 "Легаси-версия (Streamlit, страховка на откат): ",
-                html.Code("call-center-dashboard-production-6a6b.up.railway.app"),
+                html.Code("call-center-dashboard-production-6a6b.up.railway.app", style={"fontFamily": FONTS["mono"]}),
             ],
             style={"fontSize": "0.8125rem", "color": COLORS["neutral"]},
         ),

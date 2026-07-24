@@ -15,6 +15,7 @@ from dash_app.auth import get_current_department
 from dash_app.colors import COLORS, CHART_FONT
 from dash_app.components.cell_format import score_cell
 from dash_app.components.gauge_tile import gauge_tile
+from dash_app.components.page_header import page_header, section_header
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls
 
@@ -43,18 +44,6 @@ def _card(children, extra_style=None):
     if extra_style:
         style.update(extra_style)
     return html.Div(children, style=style)
-
-
-def _section_h(text: str):
-    return html.H4(
-        text,
-        style={
-            "color": COLORS["text_primary"],
-            "margin": "0 0 0.75rem 0",
-            "fontWeight": "600",
-            "fontSize": "0.9rem",
-        },
-    )
 
 
 # ── layout() — вызывается Dash'ем при каждом переходе на страницу ────────────
@@ -193,18 +182,18 @@ def layout():
     charts_row = html.Div(
         [
             _card(
-                [_section_h("Средние оценки по темам"),
+                [section_header("Средние оценки по темам"),
                  dcc.Graph(figure=fig_scores, config={"displayModeBar": False})],
                 {"flex": "2", "minWidth": "300px"},
             ),
             _card(
-                [_section_h("Срочность"),
+                [section_header("Срочность"),
                  dcc.Graph(figure=fig_urg, config={"displayModeBar": False})],
                 {"flex": "1", "minWidth": "220px"},
             ),
             _card(
                 [
-                    _section_h("По отделам"),
+                    section_header("По отделам"),
                     dept_grid,
                     dcc.Graph(figure=fig_dept, config={"displayModeBar": False})
                     if len(dept_stats) > 1 else html.Div(),
@@ -246,15 +235,8 @@ def layout():
     )
 
     return html.Div([
-        html.H2(
-            "📊 Аналитика колл-центра",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            f"{len(df)} звонков в базе",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
+        page_header("📊", "Аналитика колл-центра", f"{len(df)} звонков в базе"),
         kpi_row,
         charts_row,
-        _card([_section_h("Все звонки"), grid]),
+        _card([section_header("Все звонки"), grid]),
     ])

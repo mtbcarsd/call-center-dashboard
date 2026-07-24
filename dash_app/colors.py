@@ -12,11 +12,12 @@ COLORS = {
     "danger_light": "#FEE2E2",
     "neutral": "#6B7280",
     # Layout
-    "bg": "#F0F4F8",
+    "bg": "#F1F4F8",
     "card_bg": "#FFFFFF",
     "nav_bg": "#1E293B",
     "text_primary": "#0F172A",
     "text_secondary": "#475569",
+    "faint": "#7C8AA0",
     "border": "#E2E8F0",
     # Chart series
     "operator": "#2563EB",
@@ -33,8 +34,21 @@ COLORS = {
     "kpi_silence": "#6B7280",
 }
 
+# Единая типографика приложения (введена вместе со страницей «Справка»,
+# 2026-07-24): serif для заголовков страниц/секций (гравитас, банковское
+# наследие бухгалтерских книг), sans для основного текста/UI, monospace для
+# данных и служебных ярлыков-«eyebrow» — тот же приём, что в справочном
+# артефакте, теперь общий для всего приложения. Плотные таблицы (ag-grid) и
+# подписи графиков сознательно остаются на BODY, не DISPLAY — засечки на
+# мелких данных в сетке ухудшают считываемость, а не улучшают вид.
+FONTS = {
+    "display": "Georgia, 'Times New Roman', serif",
+    "body": "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    "mono": "ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace",
+}
+
 CHART_FONT = {
-    "family": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "family": FONTS["body"],
     "size": 12,
     "color": "#0F172A",
 }

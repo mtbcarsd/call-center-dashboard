@@ -10,6 +10,7 @@ from dash_app.auth import get_current_department
 from dash_app.colors import COLORS
 from dash_app.components.cell_format import pct_cell
 from dash_app.components.gauge_tile import gauge_tile
+from dash_app.components.page_header import page_header, section_header
 from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls, parse_compliance
 
@@ -31,7 +32,7 @@ def layout():
 
     if not compliance_by_file:
         return html.Div([
-            html.H2("🛡️ Compliance", style={"color": COLORS["text_primary"], "fontWeight": "700"}),
+            page_header("🛡️", "Compliance"),
             html.P(
                 "Нет данных compliance-проверки ни по одному звонку.",
                 style={"color": COLORS["text_secondary"]},
@@ -116,31 +117,16 @@ def layout():
                 className="ag-theme-alpine",
             )
             op_section = [
-                html.H4(
-                    "По операторам",
-                    style={"color": COLORS["text_primary"], "fontWeight": "600",
-                           "marginTop": "1.5rem", "marginBottom": "0.75rem"},
-                ),
+                html.Div(section_header("По операторам"), style={"marginTop": "1.5rem"}),
                 op_grid,
             ]
 
     return html.Div([
-        html.H2(
-            "🛡️ Compliance",
-            style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
-        ),
-        html.P(
-            f"{total} звонков проверено",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
-        ),
+        page_header("🛡️", "Compliance", f"{total} звонков проверено"),
         kpi_row,
         html.Div(
             [
-                html.H4(
-                    "Звонки с нарушениями",
-                    style={"color": COLORS["text_primary"], "fontWeight": "600",
-                           "marginBottom": "1rem", "margin": "0 0 1rem 0"},
-                ),
+                section_header("Звонки с нарушениями"),
                 violations_block,
                 *op_section,
             ],
