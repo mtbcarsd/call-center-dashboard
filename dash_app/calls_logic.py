@@ -435,10 +435,33 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
                     },
                 ))
 
+    # Метрики-only синтетика (сессия 2026-07-22): у неё нет ни аудио, ни
+    # транскрипта — только сгенерированные оценки. Отличаем от реального звонка
+    # с упавшей заливкой в S3 (там transcript_text/segments всё равно есть).
+    has_no_audio_or_transcript = (
+        audio_url is None
+        and _is_missing(row.get("transcript_text"))
+        and not row.get("segments")
+    )
+
     right_col = []
-    if not _is_missing(row.get("call_summary")):
+    has_summary = not _is_missing(row.get("call_summary"))
+    if has_summary or has_no_audio_or_transcript:
+        summary_children = [html.Strong("Резюме")]
+        if has_summary:
+            summary_children.append(html.P(row["call_summary"], style={"margin": "0.35rem 0 0 0"}))
+        if has_no_audio_or_transcript:
+            summary_children.append(html.P(
+                "ℹ️ Ни аудио, ни транскрипта для этого звонка нет — похоже на "
+                "синтетическую тестовую запись (сгенерированы только метрики/оценки, "
+                "без реального содержания разговора).",
+                style={
+                    "margin": "0.35rem 0 0 0", "fontSize": "0.8125rem",
+                    "color": COLORS["text_secondary"], "fontStyle": "italic",
+                },
+            ))
         right_col.append(html.Div(
-            [html.Strong("Резюме"), html.P(row["call_summary"], style={"margin": "0.35rem 0 0 0"})],
+            summary_children,
             style={
                 "background": COLORS["primary_light"], "padding": "0.75rem",
                 "borderRadius": "0.375rem", "marginBottom": "1rem", "fontSize": "0.875rem",

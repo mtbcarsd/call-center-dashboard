@@ -326,6 +326,28 @@ class TestRenderCallDetail:
         result_str = str(self._fn(self._row(call_summary="Клиент решил вопрос.")))
         assert "Клиент решил вопрос." in result_str
 
+    def test_synthetic_note_shown_when_no_audio_and_no_transcript(self):
+        row = self._row(call_summary="Синтетический звонок (OO): Сбой приложения.", transcript_text=None)
+        result_str = str(self._fn(row))  # audio_url не передан -> None
+        assert "похоже на" in result_str and "синтетическую" in result_str
+
+    def test_synthetic_note_hidden_when_transcript_present(self):
+        # default _row() уже даёт transcript_text — реальный звонок без аудио
+        # (например, не залилось в S3), не синтетика — заметки быть не должно.
+        result_str = str(self._fn(self._row()))
+        assert "похоже на" not in result_str
+
+    def test_synthetic_note_hidden_when_audio_present(self):
+        row = self._row(transcript_text=None)
+        result_str = str(self._fn(row, audio_url="https://example.com/a.mp3"))
+        assert "похоже на" not in result_str
+
+    def test_synthetic_note_appears_even_without_call_summary(self):
+        row = self._row(call_summary=None, transcript_text=None)
+        result_str = str(self._fn(row))
+        assert "Резюме" in result_str
+        assert "похоже на" in result_str
+
     # ── D4.3: инлайн-редакторы ──────────────────────────────────────────────
 
     def test_unconfirmed_type_shows_confirm_button(self):
