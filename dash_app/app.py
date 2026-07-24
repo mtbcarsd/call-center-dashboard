@@ -137,7 +137,8 @@ def logout():
 # по именам), это утечка внутри отдела, а не просто вопрос UX. Поэтому для
 # employee редиректим с любой другой страницы, а не просто прячем пункт меню
 # (тот же принцип, что server-side department-фильтр для manager в D2).
-_EMPLOYEE_ALLOWED_PATHS = {"/me", "/login", "/logout"}
+# /help — исключение: статическая справка без чужих данных, доступна всем ролям.
+_EMPLOYEE_ALLOWED_PATHS = {"/me", "/help", "/login", "/logout"}
 
 
 @server.before_request
@@ -164,10 +165,12 @@ _DIRECTOR_NAV_LINKS = [
     ("/compliance", "🛡️ Compliance"),
     ("/trends", "📈 Тренды"),
     ("/team", "👥 Команда"),
+    ("/help", "ℹ️ Справка"),
 ]
 
 _EMPLOYEE_NAV_LINKS = [
     ("/me", "🙋 Мой кабинет"),
+    ("/help", "ℹ️ Справка"),
 ]
 
 
