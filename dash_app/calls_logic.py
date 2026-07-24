@@ -114,8 +114,19 @@ def _detail_row(label: str, value: str) -> html.Div:
     )
 
 
-def render_call_detail(row: dict) -> html.Div:
-    """Read-only деталка звонка (D4.1) — без плеера и без редактирования."""
+AUDIO_PLAYER_ID = "call-audio-player"
+
+
+def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
+    """Деталка звонка: параметры/чек-лист/compliance (D4.1) + плеер и
+    перемотка по клику на реплику (D4.2) — без инлайн-редакторов (D4.3) и
+    тегов/коллекций/комментариев (D4.4), это следующие шаги.
+
+    audio_url — presigned-ссылка на аудио (storage.presigned_url), вызывающая
+    сторона (pages/calls.py) сама решает, доступно ли аудио — эта функция
+    остаётся чистой (без обращений к S3/БД), как и её сиблинги
+    trends_logic.py/coaching_logic.py.
+    """
     has_override = not _is_missing(row.get("call_type_override")) and row.get("call_type_override") != ""
     type_line = (
         f"{row.get('call_type_override')} 🏷️ (AI предложил: {row.get('call_type')})"
@@ -231,32 +242,69 @@ def render_call_detail(row: dict) -> html.Div:
             },
         ))
 
-    right_col.append(html.Strong("📄 Транскрипт", style={"display": "block", "marginBottom": "0.5rem"}))
+    right_col.append(html.Div(
+        [
+            html.Strong("📄 Транскрипт"),
+            html.Span(
+                " (клик по ▶ перематывает плеер на реплику)" if audio_url else "",
+                style={"color": COLORS["text_secondary"], "fontSize": "0.75rem", "fontWeight": "400"},
+            ),
+        ],
+        style={"marginBottom": "0.5rem"},
+    ))
     segments = row.get("segments")  # список dict {speaker, start_sec, end_sec, text} или None
     if segments:
-        right_col.append(html.Div(
-            [
-                html.P(
-                    [
-                        html.Strong(f"{_SPEAKER_LABEL.get(seg.get('speaker'), seg.get('speaker'))} "),
-                        html.Span(f"{seg.get('start_sec', 0):.0f}–{seg.get('end_sec', 0):.0f}с: ",
-                                   style={"color": COLORS["text_secondary"], "fontSize": "0.8rem"}),
-                        seg.get("text", ""),
-                    ],
-                    style={"marginBottom": "0.5rem", "fontSize": "0.875rem"},
-                )
-                for seg in segments
-            ],
-        ))
+        seg_rows = []
+        for seg in segments:
+            row_children = []
+            if audio_url:
+                # Pattern-matching id со значением-float ломает внутренний парсер
+                # триггера в dash-renderer (Dash 2.18): он режет prop_id по первой
+                # точке, попадая внутрь самого числа (например "6.14"), а не на
+                # границу id/prop-имени. Поэтому время — целые сантисекунды.
+                row_children.append(html.Button(
+                    "▶",
+                    id={"type": "seek-btn", "time_cs": round((seg.get("start_sec") or 0) * 100)},
+                    n_clicks=0,
+                    title="Перемотать плеер сюда",
+                    style={
+                        "background": COLORS["primary_light"], "color": COLORS["primary_bright"],
+                        "border": "none", "borderRadius": "50%", "width": "1.75rem", "height": "1.75rem",
+                        "cursor": "pointer", "flexShrink": "0", "fontSize": "0.75rem",
+                    },
+                ))
+            row_children.append(html.Span([
+                html.Strong(f"{_SPEAKER_LABEL.get(seg.get('speaker'), seg.get('speaker'))} "),
+                html.Span(f"{seg.get('start_sec', 0):.0f}–{seg.get('end_sec', 0):.0f}с: ",
+                           style={"color": COLORS["text_secondary"], "fontSize": "0.8rem"}),
+                seg.get("text", ""),
+            ], style={"fontSize": "0.875rem"}))
+            seg_rows.append(html.Div(
+                row_children,
+                style={"display": "flex", "alignItems": "flex-start", "gap": "0.5rem", "marginBottom": "0.5rem"},
+            ))
+        right_col.append(html.Div(seg_rows))
     else:
         right_col.append(html.P(
             _text(row.get("transcript_text"), "Транскрипт недоступен."),
             style={"whiteSpace": "pre-wrap", "fontSize": "0.875rem", "color": COLORS["text_secondary"]},
         ))
 
+    if audio_url:
+        audio_block = html.Audio(
+            id=AUDIO_PLAYER_ID, src=audio_url, controls=True,
+            style={"width": "100%", "marginBottom": "1.25rem"},
+        )
+    else:
+        audio_block = html.P(
+            "🔇 Аудио для этого звонка недоступно (хранилище не настроено или файл не заливался).",
+            style={"color": COLORS["text_secondary"], "fontSize": "0.8125rem", "marginBottom": "1.25rem"},
+        )
+
     return html.Div(
         [
             html.H3(_text(row.get("call_topic")), style={"color": COLORS["text_primary"], "marginTop": "0"}),
+            audio_block,
             html.Div(
                 [
                     html.Div(left_col, style={"flex": "1", "minWidth": "280px"}),

@@ -1,22 +1,28 @@
-"""Страница «Звонки» (D4.1) — галерея карточек + read-only деталка.
+"""Страница «Звонки» (D4.1 + D4.2) — галерея карточек + деталка с плеером.
 
-Эквивалент вкладки «📁 Звонки» в dashboard.py:393-660, но пока без плеера
-(D4.2), инлайн-редакторов (D4.3) и тегов/коллекций/комментариев (D4.4) —
-эти слои добавляются отдельными шагами поверх этой страницы.
+Эквивалент вкладки «📁 Звонки» в dashboard.py:393-660, но пока без инлайн-
+редакторов (D4.3) и тегов/коллекций/комментариев (D4.4) — эти слои
+добавляются отдельными шагами поверх этой страницы.
 
 Паттерн выбора карточки: клик по «Открыть» (id — pattern-matching dict) →
 callback А определяет file_name через ctx.triggered_id и кладёт в dcc.Store →
 callback Б перечитывает эту строку из БД (с тем же department-скоупом, что и
 галерея) и рендерит деталку. Два отдельных callback'а вместо одного — тот же
 dcc.Store потом переиспользуют инлайн-редакторы (D4.3), не трогая колбэк А.
+
+Перемотка плеера по клику на реплику (D4.2) — единственное место в Dash-части
+проекта, где нужен clientside_callback: currentTime у <audio> нельзя выставить
+обычным Python Output (Dash-компонент html.Audio не даёт controllable-проп для
+этого), поэтому JS напрямую находит элемент по id и двигает playhead.
 """
 import dash
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 
 from dash_app.auth import get_current_department
-from dash_app.calls_logic import render_call_card, render_call_detail
+from dash_app.calls_logic import AUDIO_PLAYER_ID, render_call_card, render_call_detail
 from dash_app.colors import COLORS
 from dash_app.data import load_calls, load_segments
+from storage import presigned_url
 
 dash.register_page(__name__, path="/calls", name="Звонки", order=1)
 
@@ -59,6 +65,7 @@ def layout():
         ),
         dcc.Store(id="calls-gallery-limit", data=_PAGE_SIZE),
         dcc.Store(id="calls-selected-file"),
+        dcc.Store(id="calls-seek-dummy"),  # обязательный Output для clientside-перемотки, значение не используется
         html.Div(
             html.P(
                 "Выберите звонок в галерее выше, чтобы открыть деталку.",
@@ -142,4 +149,26 @@ def show_call_detail(file_name):
     if not segments_df.empty:
         row["segments"] = segments_df.to_dict("records")
 
-    return render_call_detail(row)
+    audio_url = presigned_url(row.get("audio_key"))
+    return render_call_detail(row, audio_url=audio_url)
+
+
+# ── Перемотка плеера по клику на реплику (D4.2) ───────────────────────────────
+
+dash.clientside_callback(
+    f"""
+    function(n_clicks_list) {{
+        const trig = window.dash_clientside.callback_context.triggered_id;
+        if (!trig) {{ return window.dash_clientside.no_update; }}
+        const audio = document.getElementById('{AUDIO_PLAYER_ID}');
+        if (audio) {{
+            audio.currentTime = trig.time_cs / 100;
+            audio.play();
+        }}
+        return window.dash_clientside.no_update;
+    }}
+    """,
+    Output("calls-seek-dummy", "data"),
+    Input({"type": "seek-btn", "time_cs": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)

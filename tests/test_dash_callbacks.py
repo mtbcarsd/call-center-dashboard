@@ -325,3 +325,37 @@ class TestRenderCallDetail:
     def test_summary_shown_when_present(self):
         result_str = str(self._fn(self._row(call_summary="Клиент решил вопрос.")))
         assert "Клиент решил вопрос." in result_str
+
+    # ── D4.2: плеер + перемотка ────────────────────────────────────────────
+
+    def test_no_audio_url_shows_unavailable_message(self):
+        result_str = str(self._fn(self._row()))
+        assert "Аудио для этого звонка недоступно" in result_str
+
+    def test_audio_url_renders_audio_element(self):
+        from dash_app.calls_logic import AUDIO_PLAYER_ID
+        result = self._fn(self._row(), audio_url="https://example.com/a.mp3")
+        result_str = str(result)
+        assert "Аудио для этого звонка недоступно" not in result_str
+        # html.Audio должен получить фиксированный id (нужен clientside_callback'у)
+        audio_block = result.children[1]
+        assert audio_block.id == AUDIO_PLAYER_ID
+        assert audio_block.src == "https://example.com/a.mp3"
+
+    def test_seek_buttons_rendered_only_with_audio_and_segments(self):
+        segments = [{"speaker": "operator", "start_sec": 12.0, "end_sec": 15.0, "text": "Привет"}]
+        without_audio = str(self._fn(self._row(segments=segments)))
+        with_audio = str(self._fn(self._row(segments=segments), audio_url="https://example.com/a.mp3"))
+        assert "seek-btn" not in without_audio
+        assert "seek-btn" in with_audio
+
+    def test_seek_button_id_carries_start_sec_as_centiseconds(self):
+        # Не float — Dash 2.18 ломает внутренний парсер триггера на pattern-matching
+        # id со значением-float (режет prop_id по точке внутри самого числа).
+        segments = [{"speaker": "operator", "start_sec": 12.5, "end_sec": 15.0, "text": "Привет"}]
+        result = self._fn(self._row(segments=segments), audio_url="https://example.com/a.mp3")
+        # правая колонка -> блок реплик -> первая строка -> первый child (кнопка)
+        seg_row = result.children[2].children[1].children[-1].children[0]
+        seek_btn = seg_row.children[0]
+        assert seek_btn.id == {"type": "seek-btn", "time_cs": 1250}
+        assert isinstance(seek_btn.id["time_cs"], int)
