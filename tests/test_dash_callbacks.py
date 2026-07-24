@@ -359,13 +359,14 @@ class TestRenderCallDetail:
 
     def test_qa_input_defaults_to_agent_score_when_unset(self):
         result = self._fn(self._row(qa_score=None, agent_performance_score=6.5))
-        # left_col: ..., 6=Оценка оператора, 7=QA-редактор
-        qa_input = self._editor_input(result, 7)
+        # left_col: 0=Отдел,1=тип,2=оператор,3=теги,4=коллекции,5=намерение,
+        # 6=срочность,7=статус,8=оценка оператора,9=QA-редактор
+        qa_input = self._editor_input(result, 9)
         assert qa_input.value == 6.5
 
     def test_qa_input_defaults_to_existing_qa_score(self):
         result = self._fn(self._row(qa_score=9.0, agent_performance_score=6.5))
-        qa_input = self._editor_input(result, 7)
+        qa_input = self._editor_input(result, 9)
         assert qa_input.value == 9.0
 
     # ── D4.2: плеер + перемотка ────────────────────────────────────────────
@@ -397,7 +398,141 @@ class TestRenderCallDetail:
         segments = [{"speaker": "operator", "start_sec": 12.5, "end_sec": 15.0, "text": "Привет"}]
         result = self._fn(self._row(segments=segments), audio_url="https://example.com/a.mp3")
         # правая колонка -> блок реплик -> первая строка -> первый child (кнопка)
-        seg_row = result.children[2].children[1].children[-1].children[0]
+        # right_col (без «Резюме»): 0=заголовок транскрипта, 1=реплики, 2=комментарии
+        seg_row = result.children[2].children[1].children[1].children[0]
         seek_btn = seg_row.children[0]
         assert seek_btn.id == {"type": "seek-btn", "time_cs": 1250}
         assert isinstance(seek_btn.id["time_cs"], int)
+
+    # ── D4.4: теги/коллекции/комментарии ─────────────────────────────────────
+
+    def test_tags_and_collections_editors_present(self):
+        result_str = str(self._fn(self._row()))
+        assert "calls-tags-dropdown" in result_str
+        assert "calls-collections-dropdown" in result_str
+
+    def test_current_tags_prefill_dropdown_value(self):
+        row = self._row()
+        row["tags"] = ["важное", "жалоба"]
+        row["all_tags"] = ["важное", "жалоба", "прочее"]
+        result = self._fn(row)
+        tags_editor = result.children[2].children[0].children[3]
+        dropdown = tags_editor.children[1]
+        assert dropdown.value == ["важное", "жалоба"]
+
+    def test_comments_section_shows_existing_comments(self):
+        row = self._row()
+        row["comments"] = [{"author": "Julia", "text": "Отличный звонок", "created_at": "2026-07-01 10:00"}]
+        result_str = str(self._fn(row))
+        assert "Отличный звонок" in result_str
+        assert "Julia" in result_str
+
+    def test_comments_section_empty_state(self):
+        result_str = str(self._fn(self._row()))
+        assert "Пока нет комментариев" in result_str
+
+
+class TestRenderCommentsSection:
+    def setup_method(self):
+        from dash_app.calls_logic import render_comments_section
+        self._fn = render_comments_section
+
+    def test_empty_list_shows_placeholder(self):
+        result_str = str(self._fn([]))
+        assert "Пока нет комментариев" in result_str
+
+    def test_renders_author_and_text(self):
+        import datetime
+        comments = [{"author": "Boss", "text": "Проверить оператора", "created_at": datetime.datetime(2026, 7, 1, 10, 30)}]
+        result_str = str(self._fn(comments))
+        assert "Boss" in result_str
+        assert "Проверить оператора" in result_str
+        assert "01.07.2026 10:30" in result_str
+
+    def test_anonymous_when_no_author(self):
+        comments = [{"author": None, "text": "Комментарий", "created_at": None}]
+        result_str = str(self._fn(comments))
+        assert "Аноним" in result_str
+
+    def test_has_textarea_and_add_button(self):
+        result_str = str(self._fn([]))
+        assert "calls-new-comment-input" in result_str
+        assert "calls-add-comment-btn" in result_str
+
+
+class TestRenderLabelEditor:
+    def setup_method(self):
+        from dash_app.calls_logic import _render_label_editor
+        self._fn = _render_label_editor
+
+    def _build(self, current=None, all_options=None):
+        return self._fn(
+            "🔖", "Теги", "тег", current or [], all_options or [],
+            "test-dropdown", "test-new-input", "test-add-btn", "test-save-btn",
+        )
+
+    def test_dropdown_options_include_current_and_pool(self):
+        result = self._build(current=["новый-тег"], all_options=["старый-тег"])
+        dropdown = result.children[1]
+        values = {opt["value"] for opt in dropdown.options}
+        assert values == {"новый-тег", "старый-тег"}
+
+    def test_dropdown_value_is_current_selection(self):
+        result = self._build(current=["a", "b"], all_options=["a", "b", "c"])
+        dropdown = result.children[1]
+        assert dropdown.value == ["a", "b"]
+
+    def test_ids_wired_correctly(self):
+        result = self._build()
+        dropdown = result.children[1]
+        controls = result.children[2]
+        assert dropdown.id == "test-dropdown"
+        assert controls.children[0].id == "test-new-input"
+        assert controls.children[1].id == "test-add-btn"
+        assert controls.children[2].id == "test-save-btn"
+
+
+# ── D4.4: write-хелперы тегов/коллекций/комментариев ─────────────────────────
+
+class TestLabelAndCommentWriteHelpers:
+    def _run(self, fn_name, *args):
+        from dash_app import data
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        with patch("dash_app.data.get_connection", return_value=mock_conn):
+            getattr(data, fn_name)(*args)
+        return mock_conn, mock_cursor
+
+    def test_set_call_labels_deletes_then_inserts(self):
+        conn, cursor = self._run("set_call_labels", "a.wav", ["тег1", "тег2"], "call_tags", "tag_id", "tags")
+        calls = [c[0][0] for c in cursor.execute.call_args_list]
+        assert any("DELETE FROM call_tags" in c for c in calls)
+        assert sum("INSERT INTO tags" in c for c in calls) == 2
+        assert sum("INSERT INTO call_tags" in c for c in calls) == 2
+        conn.commit.assert_called_once()
+
+    def test_set_call_labels_skips_blank_names(self):
+        conn, cursor = self._run("set_call_labels", "a.wav", ["  ", "реальный"], "call_tags", "tag_id", "tags")
+        calls = [c[0][0] for c in cursor.execute.call_args_list]
+        assert sum("INSERT INTO tags" in c for c in calls) == 1
+
+    def test_set_call_labels_empty_list_only_deletes(self):
+        conn, cursor = self._run("set_call_labels", "a.wav", [], "call_tags", "tag_id", "tags")
+        assert cursor.execute.call_count == 1
+        assert "DELETE" in cursor.execute.call_args[0][0]
+
+    def test_set_call_labels_dedupes_repeated_name(self):
+        # Регрессия: повторное имя в списке (напр. пользователь добавил тег,
+        # который уже был выбран) валило вторую INSERT INTO call_tags
+        # нарушением PK(file_name, tag_id) — поймано вживую в браузере.
+        conn, cursor = self._run("set_call_labels", "a.wav", ["дубль", "дубль"], "call_tags", "tag_id", "tags")
+        calls = [c[0][0] for c in cursor.execute.call_args_list]
+        assert sum("INSERT INTO call_tags" in c for c in calls) == 1
+
+    def test_add_comment_sql(self):
+        conn, cursor = self._run("add_comment", "a.wav", "Julia", "Хороший звонок")
+        sql_arg, params = cursor.execute.call_args[0]
+        assert "INSERT INTO comments" in sql_arg
+        assert params == ("a.wav", "Julia", "Хороший звонок")
+        conn.commit.assert_called_once()

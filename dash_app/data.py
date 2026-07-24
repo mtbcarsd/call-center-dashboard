@@ -115,3 +115,85 @@ def load_segments(file_name: str) -> pd.DataFrame:
     finally:
         conn.close()
     return df
+
+
+# ── Теги и коллекции (D4.4) ───────────────────────────────────────────────────
+# label_table/join_table — фиксированные имена таблиц, задаются только из кода
+# ниже (не пользовательским вводом), f-string безопасен — тот же паттерн и то
+# же обоснование, что в dashboard.py (Streamlit).
+
+def load_label_options(label_table: str) -> list[str]:
+    conn = get_connection()
+    try:
+        df = pd.read_sql(f"SELECT name FROM {label_table} ORDER BY name", conn)
+    finally:
+        conn.close()
+    return df["name"].tolist()
+
+
+def load_call_labels(file_name: str, join_table: str, fk_col: str, label_table: str) -> list[str]:
+    conn = get_connection()
+    try:
+        df = pd.read_sql(
+            f"SELECT l.name FROM {join_table} j JOIN {label_table} l ON l.id = j.{fk_col} "
+            f"WHERE j.file_name = %(fn)s",
+            conn,
+            params={"fn": file_name},
+        )
+    finally:
+        conn.close()
+    return sorted(df["name"].tolist())
+
+
+def set_call_labels(file_name: str, names: list[str], join_table: str, fk_col: str, label_table: str) -> None:
+    # dict.fromkeys — дедуп с сохранением порядка. Без него повторное имя в
+    # names (например, если вызывающая сторона добавляет уже выбранный тег
+    # ещё раз) валит вторую INSERT INTO {join_table} нарушением PK(file_name,
+    # {fk_col}) — поймано вживую в браузере при клике «Добавить» на тег,
+    # который уже был в списке выбранных.
+    seen_names = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {join_table} WHERE file_name = %s", (file_name,))
+            for name in seen_names:
+                cur.execute(
+                    f"INSERT INTO {label_table} (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (name,)
+                )
+                cur.execute(
+                    f"INSERT INTO {join_table} (file_name, {fk_col}) "
+                    f"SELECT %s, id FROM {label_table} WHERE name = %s",
+                    (file_name, name),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ── Комментарии (D4.4) ────────────────────────────────────────────────────────
+
+def load_comments(file_name: str) -> pd.DataFrame:
+    conn = get_connection()
+    try:
+        df = pd.read_sql(
+            "SELECT author, text, created_at FROM comments "
+            "WHERE file_name = %(fn)s ORDER BY created_at",
+            conn,
+            params={"fn": file_name},
+        )
+    finally:
+        conn.close()
+    return df
+
+
+def add_comment(file_name: str, author: str, text: str) -> None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO comments (file_name, author, text) VALUES (%s, %s, %s)",
+                (file_name, author, text),
+            )
+        conn.commit()
+    finally:
+        conn.close()

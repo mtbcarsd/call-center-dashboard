@@ -1,6 +1,6 @@
-"""Страница «Звонки» (D4.1-D4.3) — галерея карточек + деталка с плеером и
-инлайн-редакторами. Эквивалент вкладки «📁 Звонки» в dashboard.py:393-660, но
-пока без тегов/коллекций/комментариев (D4.4) — следующий шаг поверх этого.
+"""Страница «Звонки» (D4.1-D4.4, полностью) — галерея карточек + деталка с
+плеером, инлайн-редакторами, тегами/коллекциями и комментариями. Эквивалент
+вкладки «📁 Звонки» в dashboard.py:393-660.
 
 Паттерн выбора карточки: клик по «Открыть» (id — pattern-matching dict) →
 callback А определяет file_name через ctx.triggered_id и кладёт в dcc.Store →
@@ -22,12 +22,17 @@ dcc.Store переиспользуют инлайн-редакторы (D4.3): �
 import dash
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 
-from dash_app.auth import get_current_department
+from dash_app.auth import get_current_department, get_current_user
 from dash_app.calls_logic import AUDIO_PLAYER_ID, render_call_card, render_call_detail
 from dash_app.colors import COLORS
 from dash_app.data import (
+    add_comment,
+    load_call_labels,
     load_calls,
+    load_comments,
+    load_label_options,
     load_segments,
+    set_call_labels,
     set_call_type_override,
     set_operator_name,
     set_qa_score,
@@ -154,6 +159,13 @@ def _load_and_render_detail(file_name):
     if not segments_df.empty:
         row["segments"] = segments_df.to_dict("records")
 
+    row["tags"] = load_call_labels(file_name, "call_tags", "tag_id", "tags")
+    row["all_tags"] = load_label_options("tags")
+    row["collections"] = load_call_labels(file_name, "call_collections", "collection_id", "collections")
+    row["all_collections"] = load_label_options("collections")
+    comments_df = load_comments(file_name)
+    row["comments"] = comments_df.to_dict("records")
+
     audio_url = presigned_url(row.get("audio_key"))
     return render_call_detail(row, audio_url=audio_url)
 
@@ -238,6 +250,83 @@ def save_qa_score(_n_clicks, file_name, new_value):
     except (TypeError, ValueError):
         return dash.no_update
     set_qa_score(file_name, score)
+    return _load_and_render_detail(file_name)
+
+
+# ── Теги / коллекции / комментарии (D4.4) ─────────────────────────────────────
+
+@callback(
+    Output("calls-detail-container", "children", allow_duplicate=True),
+    Input("calls-tags-save-btn", "n_clicks"),
+    State("calls-selected-file", "data"),
+    State("calls-tags-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def save_tags(_n_clicks, file_name, selected):
+    if not file_name or not _file_in_scope(file_name):
+        return dash.no_update
+    set_call_labels(file_name, selected or [], "call_tags", "tag_id", "tags")
+    return _load_and_render_detail(file_name)
+
+
+@callback(
+    Output("calls-detail-container", "children", allow_duplicate=True),
+    Input("calls-tags-add-btn", "n_clicks"),
+    State("calls-selected-file", "data"),
+    State("calls-tags-new-input", "value"),
+    State("calls-tags-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def add_tag(_n_clicks, file_name, new_tag, current_selected):
+    if not file_name or not _file_in_scope(file_name) or not (new_tag or "").strip():
+        return dash.no_update
+    updated = list(current_selected or []) + [new_tag.strip()]
+    set_call_labels(file_name, updated, "call_tags", "tag_id", "tags")
+    return _load_and_render_detail(file_name)
+
+
+@callback(
+    Output("calls-detail-container", "children", allow_duplicate=True),
+    Input("calls-collections-save-btn", "n_clicks"),
+    State("calls-selected-file", "data"),
+    State("calls-collections-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def save_collections(_n_clicks, file_name, selected):
+    if not file_name or not _file_in_scope(file_name):
+        return dash.no_update
+    set_call_labels(file_name, selected or [], "call_collections", "collection_id", "collections")
+    return _load_and_render_detail(file_name)
+
+
+@callback(
+    Output("calls-detail-container", "children", allow_duplicate=True),
+    Input("calls-collections-add-btn", "n_clicks"),
+    State("calls-selected-file", "data"),
+    State("calls-collections-new-input", "value"),
+    State("calls-collections-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def add_collection(_n_clicks, file_name, new_collection, current_selected):
+    if not file_name or not _file_in_scope(file_name) or not (new_collection or "").strip():
+        return dash.no_update
+    updated = list(current_selected or []) + [new_collection.strip()]
+    set_call_labels(file_name, updated, "call_collections", "collection_id", "collections")
+    return _load_and_render_detail(file_name)
+
+
+@callback(
+    Output("calls-detail-container", "children", allow_duplicate=True),
+    Input("calls-add-comment-btn", "n_clicks"),
+    State("calls-selected-file", "data"),
+    State("calls-new-comment-input", "value"),
+    prevent_initial_call=True,
+)
+def save_comment(_n_clicks, file_name, text):
+    if not file_name or not _file_in_scope(file_name) or not (text or "").strip():
+        return dash.no_update
+    user = get_current_user() or {}
+    add_comment(file_name, user.get("display_name") or user.get("username") or "", text.strip())
     return _load_and_render_detail(file_name)
 
 

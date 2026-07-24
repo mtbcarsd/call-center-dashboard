@@ -1,9 +1,9 @@
-"""Чистые функции сборки UI для страницы «Звонки» (D4.1-D4.3).
+"""Чистые функции сборки UI для страницы «Звонки» (D4.1-D4.4, полностью).
 
 Вынесены из pages/calls.py по тому же принципу, что trends_logic.py/
 coaching_logic.py — тестируются без Dash-app-instance. Галерея + деталка
-(D4.1), плеер (D4.2), инлайн-редакторы типа/оператора/QA-оценки (D4.3) —
-готово; теги/коллекции/комментарии (D4.4) добавятся отдельным шагом поверх.
+(D4.1), плеер (D4.2), инлайн-редакторы типа/оператора/QA-оценки (D4.3),
+теги/коллекции/комментарии (D4.4) — весь функционал вкладки «Звонки» готов.
 """
 import json
 
@@ -237,10 +237,96 @@ def _render_qa_editor(row: dict) -> html.Div:
     )
 
 
+def _render_label_editor(
+    icon: str, title: str, singular: str, current: list[str], all_options: list[str],
+    dropdown_id: str, new_input_id: str, add_btn_id: str, save_btn_id: str,
+) -> html.Div:
+    """Теги/коллекции (D4.4) — выбор из существующих (dcc.Dropdown multi) +
+    отдельное поле для нового значения, тот же паттерн, что render_label_editor
+    в dashboard.py, но без auto-save на каждое изменение dropdown: явная
+    кнопка «Сохранить выбор», как у остальных редакторов D4.3 — единый паттерн
+    вместо двух разных (auto-save для тегов, explicit-save для типа/QA).
+
+    singular — форма для плейсхолдера поля добавления («тег»/«коллекция»);
+    выводить её из title автоматическим отсечением окончания не стал —
+    «Коллекции» → «коллекци» таким способом получается некорректно."""
+    options = sorted(set(all_options) | set(current))
+    return html.Div(
+        [
+            html.Strong(f"{icon} {title}", style={"display": "block", "marginBottom": "0.3rem", "fontSize": "0.875rem"}),
+            dcc.Dropdown(
+                id=dropdown_id,
+                options=[{"label": o, "value": o} for o in options],
+                value=current, multi=True, placeholder=f"Выбрать {title.lower()}...",
+                style={"fontSize": "0.8125rem"},
+            ),
+            html.Div(
+                [
+                    dcc.Input(
+                        id=new_input_id, type="text", value="", placeholder=f"Новый {singular}...",
+                        style=_EDIT_INPUT_STYLE,
+                    ),
+                    html.Button("➕ Добавить", id=add_btn_id, n_clicks=0, style=_EDIT_SAVE_BTN_STYLE),
+                    html.Button("💾 Сохранить выбор", id=save_btn_id, n_clicks=0, style=_EDIT_SAVE_BTN_STYLE),
+                ],
+                style={"display": "flex", "gap": "0.4rem", "marginTop": "0.3rem", "flexWrap": "wrap"},
+            ),
+        ],
+        style={"marginBottom": "0.75rem"},
+    )
+
+
+def render_comments_section(comments: list[dict]) -> html.Div:
+    """Список комментариев + форма добавления (D4.4)."""
+    if not comments:
+        items = [html.P(
+            "Пока нет комментариев.",
+            style={"color": COLORS["text_secondary"], "fontStyle": "italic", "fontSize": "0.875rem"},
+        )]
+    else:
+        items = []
+        for c in comments:
+            created = c.get("created_at")
+            created_text = created.strftime("%d.%m.%Y %H:%M") if hasattr(created, "strftime") else _text(created, "")
+            items.append(html.Div(
+                [
+                    html.Div([
+                        html.Strong(c.get("author") or "Аноним", style={"fontSize": "0.8125rem"}),
+                        html.Span(f" · {created_text}", style={"color": COLORS["text_secondary"], "fontSize": "0.75rem"}),
+                    ]),
+                    html.P(c.get("text", ""), style={"margin": "0.2rem 0 0 0", "fontSize": "0.875rem"}),
+                ],
+                style={
+                    "marginBottom": "0.6rem", "paddingBottom": "0.6rem",
+                    "borderBottom": f"1px solid {COLORS['border']}",
+                },
+            ))
+
+    return html.Div(
+        [
+            html.Strong("💬 Комментарии", style={"display": "block", "marginBottom": "0.5rem"}),
+            html.Div(items),
+            dcc.Textarea(
+                id="calls-new-comment-input", value="", placeholder="Новый комментарий...",
+                style={
+                    "width": "100%", "minHeight": "4rem", "fontFamily": "inherit",
+                    "fontSize": "0.875rem", "border": f"1.5px solid {COLORS['border']}",
+                    "borderRadius": "0.375rem", "padding": "0.5rem", "marginTop": "0.5rem",
+                },
+            ),
+            html.Button(
+                "💬 Добавить комментарий", id="calls-add-comment-btn", n_clicks=0,
+                style={**_EDIT_SAVE_BTN_STYLE, "marginTop": "0.5rem"},
+            ),
+        ],
+        style={"marginTop": "1.25rem"},
+    )
+
+
 def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
     """Деталка звонка: параметры/чек-лист/compliance (D4.1) + плеер и
     перемотка по клику на реплику (D4.2) + инлайн-редакторы типа/оператора/
-    QA-оценки (D4.3) — без тегов/коллекций/комментариев (D4.4), это следующий шаг.
+    QA-оценки/тегов/коллекций + комментарии (D4.3-D4.4) — полный функционал.
 
     audio_url — presigned-ссылка на аудио (storage.presigned_url), вызывающая
     сторона (pages/calls.py) сама решает, доступно ли аудио — эта функция
@@ -251,6 +337,15 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
         _detail_row("Отдел", _text(row.get("department"))),
         _render_type_editor(row),
         _render_operator_editor(row),
+        _render_label_editor(
+            "🔖", "Теги", "тег", row.get("tags") or [], row.get("all_tags") or [],
+            "calls-tags-dropdown", "calls-tags-new-input", "calls-tags-add-btn", "calls-tags-save-btn",
+        ),
+        _render_label_editor(
+            "📦", "Коллекции", "коллекция", row.get("collections") or [], row.get("all_collections") or [],
+            "calls-collections-dropdown", "calls-collections-new-input",
+            "calls-collections-add-btn", "calls-collections-save-btn",
+        ),
         _detail_row("Намерение клиента", _text(row.get("customer_intent"))),
         _detail_row("Срочность", _text(row.get("urgency"))),
         _detail_row("Статус", _text(row.get("resolution_status"))),
@@ -397,6 +492,8 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
             _text(row.get("transcript_text"), "Транскрипт недоступен."),
             style={"whiteSpace": "pre-wrap", "fontSize": "0.875rem", "color": COLORS["text_secondary"]},
         ))
+
+    right_col.append(render_comments_section(row.get("comments") or []))
 
     if audio_url:
         audio_block = html.Audio(
