@@ -67,9 +67,26 @@ def layout():
             "📁 Звонки",
             style={"color": COLORS["text_primary"], "margin": "0 0 0.25rem 0", "fontWeight": "700"},
         ),
-        html.P(
-            f"{len(df)} звонков",
-            style={"color": COLORS["text_secondary"], "margin": "0 0 1.5rem 0", "fontSize": "0.875rem"},
+        html.Div(
+            [
+                html.P(
+                    f"{len(df)} звонков", id="calls-count-label",
+                    style={"color": COLORS["text_secondary"], "margin": "0", "fontSize": "0.875rem"},
+                ),
+                dcc.Checklist(
+                    id="calls-audio-filter",
+                    options=[{"label": " 🔊 Только звонки с аудио", "value": "audio_only"}],
+                    value=[],
+                    labelStyle={
+                        "display": "flex", "alignItems": "center", "gap": "0.3rem",
+                        "fontSize": "0.875rem", "color": COLORS["text_secondary"], "cursor": "pointer",
+                    },
+                ),
+            ],
+            style={
+                "display": "flex", "justifyContent": "space-between", "alignItems": "center",
+                "marginBottom": "1.25rem", "flexWrap": "wrap", "gap": "0.5rem",
+            },
         ),
         html.Div(id="calls-gallery-container"),
         html.Div(
@@ -104,10 +121,15 @@ def increase_gallery_limit(_n_clicks, current_limit):
 @callback(
     Output("calls-gallery-container", "children"),
     Output("calls-show-more-btn", "style"),
+    Output("calls-count-label", "children"),
     Input("calls-gallery-limit", "data"),
+    Input("calls-audio-filter", "value"),
 )
-def render_gallery(limit):
-    df = load_calls(department=get_current_department())
+def render_gallery(limit, audio_filter):
+    df_all = load_calls(department=get_current_department())
+    audio_only = bool(audio_filter and "audio_only" in audio_filter)
+    df = df_all[df_all["audio_key"].notna() & (df_all["audio_key"] != "")] if audio_only else df_all
+
     limit = limit or _PAGE_SIZE
     visible = df.iloc[:limit]
 
@@ -117,7 +139,8 @@ def render_gallery(limit):
     ]
     gallery = html.Div(
         cards if cards else [html.P(
-            "Нет звонков по текущим данным.", style={"color": COLORS["text_secondary"]},
+            "Нет звонков с аудио." if audio_only else "Нет звонков по текущим данным.",
+            style={"color": COLORS["text_secondary"]},
         )],
         style={"display": "flex", "gap": "1rem", "flexWrap": "wrap", "marginBottom": "1rem"},
     )
@@ -125,7 +148,11 @@ def render_gallery(limit):
     btn_style = dict(_SHOW_MORE_BTN_STYLE)
     if limit >= len(df):
         btn_style["display"] = "none"
-    return gallery, btn_style
+
+    count_text = (
+        f"{len(df)} звонков с аудио (из {len(df_all)} всего)" if audio_only else f"{len(df_all)} звонков"
+    )
+    return gallery, btn_style, count_text
 
 
 @callback(
