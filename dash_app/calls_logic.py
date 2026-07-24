@@ -1,14 +1,14 @@
-"""Чистые функции сборки UI для страницы «Звонки» (D4.1).
+"""Чистые функции сборки UI для страницы «Звонки» (D4.1-D4.3).
 
 Вынесены из pages/calls.py по тому же принципу, что trends_logic.py/
-coaching_logic.py — тестируются без Dash-app-instance. Пока только read-only
-галерея + деталка (D4.1); плеер (D4.2), инлайн-редакторы (D4.3) и
-теги/коллекции/комментарии (D4.4) добавятся отдельными шагами поверх этого.
+coaching_logic.py — тестируются без Dash-app-instance. Галерея + деталка
+(D4.1), плеер (D4.2), инлайн-редакторы типа/оператора/QA-оценки (D4.3) —
+готово; теги/коллекции/комментарии (D4.4) добавятся отдельным шагом поверх.
 """
 import json
 
 import pandas as pd
-from dash import html
+from dash import dcc, html
 
 from checklist import CHECKLIST
 from dash_app.colors import COLORS
@@ -116,27 +116,141 @@ def _detail_row(label: str, value: str) -> html.Div:
 
 AUDIO_PLAYER_ID = "call-audio-player"
 
+_EDIT_INPUT_STYLE = {
+    "border": f"1.5px solid {COLORS['border']}",
+    "borderRadius": "0.375rem",
+    "padding": "0.3rem 0.5rem",
+    "fontSize": "0.8125rem",
+    "fontFamily": "inherit",
+    "flex": "1",
+    "minWidth": "120px",
+}
+_EDIT_SAVE_BTN_STYLE = {
+    "background": COLORS["primary_bright"],
+    "color": "white",
+    "border": "none",
+    "borderRadius": "0.375rem",
+    "padding": "0.3rem 0.75rem",
+    "fontWeight": "600",
+    "fontSize": "0.75rem",
+    "cursor": "pointer",
+    "fontFamily": "inherit",
+    "whiteSpace": "nowrap",
+}
+_EDIT_CONFIRM_BTN_STYLE = {**_EDIT_SAVE_BTN_STYLE, "background": COLORS["success"]}
+
+
+def _render_type_editor(row: dict) -> html.Div:
+    """Тип звонка (D4.3): AI-категория, подтверждаемая или исправляемая вручную —
+    id-компонентов фиксированные (не pattern-matching), т.к. в момент рендера
+    существует ровно одна деталка на странице (см. AUDIO_PLAYER_ID выше — тот
+    же принцип)."""
+    has_override = not _is_missing(row.get("call_type_override")) and row.get("call_type_override") != ""
+    status = (
+        f"🏷️ подтверждено · AI предложил: {_text(row.get('call_type'))}"
+        if has_override else "AI, не подтверждено"
+    )
+    current_value = row.get("call_type_override") if has_override else row.get("call_type")
+
+    controls = [
+        dcc.Input(
+            id="calls-type-input", type="text",
+            value=_text(current_value, ""), style=_EDIT_INPUT_STYLE,
+        ),
+        html.Button("💾 Сохранить", id="calls-type-save-btn", n_clicks=0, style=_EDIT_SAVE_BTN_STYLE),
+    ]
+    if not has_override:
+        controls.append(html.Button(
+            "✅ Подтвердить как есть", id="calls-type-confirm-btn", n_clicks=0,
+            style=_EDIT_CONFIRM_BTN_STYLE,
+        ))
+
+    return html.Div(
+        [
+            html.Div([
+                html.Span("Тип: ", style={"fontWeight": "600", "color": COLORS["text_primary"]}),
+                html.Span(status, style={"color": COLORS["text_secondary"], "fontSize": "0.8rem"}),
+            ]),
+            html.Div(controls, style={"display": "flex", "gap": "0.4rem", "marginTop": "0.3rem", "flexWrap": "wrap"}),
+        ],
+        style={"marginBottom": "0.6rem", "fontSize": "0.875rem"},
+    )
+
+
+def _render_operator_editor(row: dict) -> html.Div:
+    """Оператор звонка (D4.3) — свободный текст, без справочника операторов
+    (см. комментарий в db.py про 10+ звонков и избыточность отдельной таблицы)."""
+    current = row.get("operator_name")
+    return html.Div(
+        [
+            html.Div([
+                html.Span("Оператор: ", style={"fontWeight": "600", "color": COLORS["text_primary"]}),
+                html.Span(_text(current), style={"color": COLORS["text_secondary"]}),
+            ]),
+            html.Div(
+                [
+                    dcc.Input(
+                        id="calls-operator-input", type="text",
+                        value=current if not _is_missing(current) else "",
+                        placeholder="Имя оператора", style=_EDIT_INPUT_STYLE,
+                    ),
+                    html.Button("💾 Сохранить", id="calls-operator-save-btn", n_clicks=0, style=_EDIT_SAVE_BTN_STYLE),
+                ],
+                style={"display": "flex", "gap": "0.4rem", "marginTop": "0.3rem"},
+            ),
+        ],
+        style={"marginBottom": "0.6rem", "fontSize": "0.875rem"},
+    )
+
+
+def _render_qa_editor(row: dict) -> html.Div:
+    """QA-оценка (D4.3) — ручная оценка проверяющего, отдельно от AI-оценки по
+    чек-листу; показываем расхождение (Δ), как в Streamlit-версии."""
+    qa = row.get("qa_score")
+    agent_score = row.get("agent_performance_score")
+    if not _is_missing(qa):
+        delta = qa - (agent_score or 0)
+        status = f"{qa:.1f}/10 (Δ {delta:+.1f} к AI)"
+        default_value = qa
+    else:
+        status = "— (не проставлена)"
+        default_value = agent_score if not _is_missing(agent_score) else 0
+
+    return html.Div(
+        [
+            html.Div([
+                html.Span("QA-оценка: ", style={"fontWeight": "600", "color": COLORS["text_primary"]}),
+                html.Span(status, style={"color": COLORS["text_secondary"]}),
+            ]),
+            html.Div(
+                [
+                    dcc.Input(
+                        id="calls-qa-input", type="number", min=0, max=10, step=0.5,
+                        value=default_value, style=_EDIT_INPUT_STYLE,
+                    ),
+                    html.Button("💾 Сохранить", id="calls-qa-save-btn", n_clicks=0, style=_EDIT_SAVE_BTN_STYLE),
+                ],
+                style={"display": "flex", "gap": "0.4rem", "marginTop": "0.3rem"},
+            ),
+        ],
+        style={"marginBottom": "0.6rem", "fontSize": "0.875rem"},
+    )
+
 
 def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
     """Деталка звонка: параметры/чек-лист/compliance (D4.1) + плеер и
-    перемотка по клику на реплику (D4.2) — без инлайн-редакторов (D4.3) и
-    тегов/коллекций/комментариев (D4.4), это следующие шаги.
+    перемотка по клику на реплику (D4.2) + инлайн-редакторы типа/оператора/
+    QA-оценки (D4.3) — без тегов/коллекций/комментариев (D4.4), это следующий шаг.
 
     audio_url — presigned-ссылка на аудио (storage.presigned_url), вызывающая
     сторона (pages/calls.py) сама решает, доступно ли аудио — эта функция
     остаётся чистой (без обращений к S3/БД), как и её сиблинги
     trends_logic.py/coaching_logic.py.
     """
-    has_override = not _is_missing(row.get("call_type_override")) and row.get("call_type_override") != ""
-    type_line = (
-        f"{row.get('call_type_override')} 🏷️ (AI предложил: {row.get('call_type')})"
-        if has_override else f"{_text(row.get('call_type'))} (AI, не подтверждено)"
-    )
-
     left_col = [
         _detail_row("Отдел", _text(row.get("department"))),
-        _detail_row("Тип", type_line),
-        _detail_row("Оператор", _text(row.get("operator_name"))),
+        _render_type_editor(row),
+        _render_operator_editor(row),
         _detail_row("Намерение клиента", _text(row.get("customer_intent"))),
         _detail_row("Срочность", _text(row.get("urgency"))),
         _detail_row("Статус", _text(row.get("resolution_status"))),
@@ -144,14 +258,8 @@ def render_call_detail(row: dict, audio_url: str | None = None) -> html.Div:
             "Оценка оператора (чек-лист)",
             f"{row.get('agent_performance_score')}/10" if not _is_missing(row.get("agent_performance_score")) else "—",
         ),
+        _render_qa_editor(row),
     ]
-
-    if not _is_missing(row.get("qa_score")):
-        agent_score = row.get("agent_performance_score") or 0
-        delta = row["qa_score"] - agent_score
-        left_col.append(_detail_row("QA-оценка", f"{row['qa_score']:.1f}/10 (Δ {delta:+.1f} к AI)"))
-    else:
-        left_col.append(_detail_row("QA-оценка", "— (не проставлена)"))
 
     left_col.append(_detail_row(
         "Удовл. клиента",

@@ -177,3 +177,49 @@ class TestLoadCallsDepartmentFilter:
         mock_sql = self._run_load_calls(department="OO", operator_match_name="Иванова")
         sql_arg = mock_sql.call_args[0][0]
         assert "WHERE department" in sql_arg and "AND operator_name" in sql_arg
+
+
+# ── D4.3: write-хелперы инлайн-редакторов ─────────────────────────────────────
+
+class TestCallEditWriteHelpers:
+    """set_call_type_override/set_operator_name/set_qa_score — проверяем SQL
+    и что транзакция коммитится (без реальной БД, курсор замокан)."""
+
+    def _run(self, fn_name, *args):
+        from dash_app import data
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        with patch("dash_app.data.get_connection", return_value=mock_conn):
+            getattr(data, fn_name)(*args)
+        return mock_conn, mock_cursor
+
+    def test_set_call_type_override_sql(self):
+        conn, cursor = self._run("set_call_type_override", "a.wav", "переводы")
+        sql_arg, params = cursor.execute.call_args[0]
+        assert "UPDATE call_analysis SET call_type_override" in sql_arg
+        assert params == ("переводы", "a.wav")
+        conn.commit.assert_called_once()
+
+    def test_set_operator_name_sql(self):
+        conn, cursor = self._run("set_operator_name", "a.wav", "Иванова")
+        sql_arg, params = cursor.execute.call_args[0]
+        assert "UPDATE call_analysis SET operator_name" in sql_arg
+        assert params == ("Иванова", "a.wav")
+        conn.commit.assert_called_once()
+
+    def test_set_operator_name_can_clear_to_none(self):
+        conn, cursor = self._run("set_operator_name", "a.wav", None)
+        params = cursor.execute.call_args[0][1]
+        assert params == (None, "a.wav")
+
+    def test_set_qa_score_sql(self):
+        conn, cursor = self._run("set_qa_score", "a.wav", 8.5)
+        sql_arg, params = cursor.execute.call_args[0]
+        assert "UPDATE call_analysis SET qa_score" in sql_arg
+        assert params == (8.5, "a.wav")
+        conn.commit.assert_called_once()
+
+    def test_connection_closed_after_write(self):
+        conn, _ = self._run("set_qa_score", "a.wav", 5.0)
+        conn.close.assert_called_once()

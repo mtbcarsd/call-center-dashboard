@@ -326,6 +326,48 @@ class TestRenderCallDetail:
         result_str = str(self._fn(self._row(call_summary="Клиент решил вопрос.")))
         assert "Клиент решил вопрос." in result_str
 
+    # ── D4.3: инлайн-редакторы ──────────────────────────────────────────────
+
+    def test_unconfirmed_type_shows_confirm_button(self):
+        result_str = str(self._fn(self._row()))
+        assert "calls-type-confirm-btn" in result_str
+        assert "AI, не подтверждено" in result_str
+
+    def test_confirmed_type_hides_confirm_button(self):
+        result_str = str(self._fn(self._row(call_type_override="переводы")))
+        assert "calls-type-confirm-btn" not in result_str
+        assert "подтверждено" in result_str
+        assert "AI предложил: карты" in result_str
+
+    @staticmethod
+    def _editor_input(result, left_col_index):
+        # left_col[i] -> editor Div([status, controls]) -> controls.children[0] = dcc.Input
+        editor_div = result.children[2].children[0].children[left_col_index]
+        controls_div = editor_div.children[1]
+        return controls_div.children[0]
+
+    def test_type_input_prefilled_with_effective_value(self):
+        result = self._fn(self._row(call_type_override="переводы"))
+        # left_col: 0=Отдел, 1=тип, 2=оператор, ...
+        type_input = self._editor_input(result, 1)
+        assert type_input.value == "переводы"
+
+    def test_operator_input_prefilled(self):
+        result = self._fn(self._row(operator_name="Петрова"))
+        operator_input = self._editor_input(result, 2)
+        assert operator_input.value == "Петрова"
+
+    def test_qa_input_defaults_to_agent_score_when_unset(self):
+        result = self._fn(self._row(qa_score=None, agent_performance_score=6.5))
+        # left_col: ..., 6=Оценка оператора, 7=QA-редактор
+        qa_input = self._editor_input(result, 7)
+        assert qa_input.value == 6.5
+
+    def test_qa_input_defaults_to_existing_qa_score(self):
+        result = self._fn(self._row(qa_score=9.0, agent_performance_score=6.5))
+        qa_input = self._editor_input(result, 7)
+        assert qa_input.value == 9.0
+
     # ── D4.2: плеер + перемотка ────────────────────────────────────────────
 
     def test_no_audio_url_shows_unavailable_message(self):

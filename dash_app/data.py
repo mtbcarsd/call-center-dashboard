@@ -58,6 +58,50 @@ def load_calls(
     return df
 
 
+def set_call_type_override(file_name: str, value: str | None) -> None:
+    """Ручное подтверждение/исправление категории звонка (D4.3).
+    Эквивалент dashboard.py:set_call_type_override — тот же SQL, отдельная
+    копия для Dash (эти write-хелперы не выносил в общий модуль вместе с
+    parse_*/checklist_pass_rates в D3.2 — это side-effect'ы конкретной
+    страницы, а не read-only данные, используемые везде)."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE call_analysis SET call_type_override = %s WHERE file_name = %s",
+                (value, file_name),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_operator_name(file_name: str, value: str | None) -> None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE call_analysis SET operator_name = %s WHERE file_name = %s",
+                (value, file_name),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_qa_score(file_name: str, value: float | None) -> None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE call_analysis SET qa_score = %s WHERE file_name = %s",
+                (value, file_name),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def load_segments(file_name: str) -> pd.DataFrame:
     """Реплики транскрипта звонка (для деталки в /calls, клик-перемотка в D4.2)."""
     conn = get_connection()
