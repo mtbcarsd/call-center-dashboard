@@ -26,7 +26,7 @@ from dash_app.components.delta_badge import delta_badge
 from dash_app.components.gauge_tile import gauge_tile
 from dash_app.components.page_header import page_header, section_header
 from dash_app.components.stat_tile import stat_tile
-from dash_app.data import load_calls
+from dash_app.data import load_calls, parse_checklist, checklist_pass_rates
 
 dash.register_page(__name__, path="/", name="Аналитика", order=0)
 
@@ -99,6 +99,153 @@ def _delta(now: float, prev: float) -> float | None:
     return now - prev
 
 
+_ALERT_ICON = {"danger": "🔴", "warning": "🟠"}
+
+
+def _render_alerts(cur_df: pd.DataFrame, cur: dict, prev: dict):
+    """E5 — проактивные алерты без LLM: дешёвые пороговые эвристики поверх
+    уже посчитанных cur/prev агрегатов, чтобы директор видел «что не так» на
+    самом видном месте, а не только когда сам полезет смотреть графики.
+    Отдельно от agents/trends.py (LLM-анализ паттернов по кнопке на
+    странице «Тренды») — это разные уровни: здесь просто пороги на
+    цифрах, там — содержательный разбор текста разговоров."""
+    alerts = []
+
+    resolved_delta = _delta(cur["resolved_pct"], prev["resolved_pct"])
+    if resolved_delta is not None and resolved_delta <= -10:
+        alerts.append(("danger", (
+            f"% решено упал на {abs(resolved_delta):.0f} п.п. к предыдущему периоду "
+            f"({prev['resolved_pct']:.0f}% → {cur['resolved_pct']:.0f}%)."
+        )))
+
+    agent_delta = _delta(cur["agent"], prev["agent"])
+    if agent_delta is not None and prev["agent"] > 0 and (agent_delta / prev["agent"]) <= -0.15:
+        alerts.append(("danger", (
+            f"Оценка оператора просела на {abs(agent_delta):.1f} балла к предыдущему периоду "
+            f"({prev['agent']:.1f}/10 → {cur['agent']:.1f}/10)."
+        )))
+
+    cur_esc_rate = (cur["escalated"] / cur["count"] * 100) if cur["count"] else None
+    prev_esc_rate = (prev["escalated"] / prev["count"] * 100) if prev["count"] else None
+    if cur_esc_rate is not None and prev_esc_rate is not None and (cur_esc_rate - prev_esc_rate) >= 5:
+        alerts.append(("warning", (
+            f"Доля эскалаций выросла с {prev_esc_rate:.0f}% до {cur_esc_rate:.0f}% звонков "
+            f"к предыдущему периоду."
+        )))
+
+    all_checklists = [c for c in cur_df["checklist_json"].apply(parse_checklist) if c]
+    if all_checklists:
+        rates = {k: v for k, v in checklist_pass_rates(all_checklists).items() if v is not None}
+        if rates:
+            worst_label, worst_rate = min(rates.items(), key=lambda kv: kv[1])
+            if worst_rate < 50:
+                alerts.append(("warning", (
+                    f"Худший пункт чек-листа за период — «{worst_label}»: "
+                    f"проходит только {worst_rate:.0f}% звонков."
+                )))
+
+    if not alerts:
+        return _card(
+            html.P(
+                "✅ Явных проблем за выбранный период не обнаружено.",
+                style={"color": COLORS["success"], "fontWeight": "500", "margin": "0"},
+            ),
+            {"marginBottom": "1.5rem"},
+        )
+
+    rows = [
+        html.Div(
+            [html.Span(_ALERT_ICON[level], style={"marginRight": "0.6rem"}), text],
+            style={
+                "padding": "0.5rem 0", "color": COLORS["text_primary"],
+                "borderBottom": f"1px solid {COLORS['border']}",
+            },
+        )
+        for level, text in alerts
+    ]
+    return _card(
+        [section_header("Что требует внимания"), *rows],
+        {"marginBottom": "1.5rem"},
+    )
+
+
+_MIN_CALLS_FOR_LEADERBOARD = 3
+
+
+def _medal(rank: int) -> str:
+    return {0: "🥇", 1: "🥈", 2: "🥉"}.get(rank, "▪️")
+
+
+def _leaderboard_card(df: pd.DataFrame):
+    """E4 — топ/анти-топ операторов прямо на главном экране (за выбранный
+    период), без перехода на отдельную страницу «Операторы». Минимум 3
+    звонка за период — иначе один звонок выталкивает оператора в топ/антитоп
+    без статистической значимости."""
+    named = df[df["operator_name"].notna() & (df["operator_name"] != "")]
+    stats = named.groupby("operator_name").agg(
+        Звонков=("file_name", "count"),
+        Оценка=("agent_performance_score", "mean"),
+    ).reset_index()
+    stats = stats[stats["Звонков"] >= _MIN_CALLS_FOR_LEADERBOARD]
+    if stats.empty:
+        return None
+
+    top = stats.sort_values("Оценка", ascending=False).head(3)
+    bottom = stats.sort_values("Оценка", ascending=True).head(3)
+
+    def _rows(rows_df, medals):
+        items = []
+        for rank, (_, row) in enumerate(rows_df.iterrows()):
+            items.append(html.Div(
+                [
+                    html.Span(_medal(rank) if medals else "⚠️", style={"marginRight": "0.5rem"}),
+                    html.Span(row["operator_name"], style={"flex": "1", "color": COLORS["text_primary"]}),
+                    html.Span(f"{row['Оценка']:.1f}/10", style={"fontWeight": "700", "fontVariantNumeric": "tabular-nums"}),
+                    html.Span(f" · {int(row['Звонков'])} зв.", style={"color": COLORS["text_secondary"], "fontSize": "0.78rem", "marginLeft": "0.3rem"}),
+                ],
+                style={
+                    "display": "flex", "alignItems": "center",
+                    "padding": "0.4rem 0", "borderBottom": f"1px solid {COLORS['border']}",
+                },
+            ))
+        return items
+
+    return _card(
+        [
+            html.Div(
+                [
+                    section_header("Лидерборд за период"),
+                    dcc.Link(
+                        "Все операторы →", href="/operators",
+                        style={"fontSize": "0.8rem", "color": COLORS["primary_bright"], "textDecoration": "none"},
+                    ),
+                ],
+                style={"display": "flex", "justifyContent": "space-between", "alignItems": "baseline"},
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.P("Топ-3", style={"fontWeight": "700", "marginBottom": "0.5rem", "color": COLORS["success"]}),
+                            *_rows(top, medals=True),
+                        ],
+                        style={"flex": "1", "minWidth": "260px"},
+                    ),
+                    html.Div(
+                        [
+                            html.P("Требует внимания", style={"fontWeight": "700", "marginBottom": "0.5rem", "color": COLORS["danger"]}),
+                            *_rows(bottom, medals=False),
+                        ],
+                        style={"flex": "1", "minWidth": "260px"},
+                    ),
+                ],
+                style={"display": "flex", "gap": "2rem", "flexWrap": "wrap", "marginTop": "0.5rem"},
+            ),
+        ],
+        {"marginBottom": "1.5rem"},
+    )
+
+
 # ── layout() — статичная оболочка, содержимое приходит из callback'а ─────────
 
 def layout():
@@ -146,6 +293,9 @@ def layout():
         html.Div(id="analytics-body"),
         dcc.Store(id="analytics-min-date", data=min_allowed.isoformat()),
         dcc.Store(id="analytics-max-date", data=max_allowed.isoformat()),
+        # E6 — автообновление: директор может держать вкладку открытой часами,
+        # цифры не должны застывать на моменте открытия страницы.
+        dcc.Interval(id="analytics-refresh-interval", interval=90_000, n_intervals=0),
     ])
 
 
@@ -184,8 +334,9 @@ def apply_preset(_n7, _n30, _n90, _nall, min_date, max_date):
     Output("analytics-body", "children"),
     Input("analytics-date-range", "start_date"),
     Input("analytics-date-range", "end_date"),
+    Input("analytics-refresh-interval", "n_intervals"),
 )
-def render_body(start_date, end_date):
+def render_body(start_date, end_date, _n_intervals):
     df = _with_effective_date(load_calls(department=get_current_department()))
     if not start_date or not end_date:
         return html.P("Выберите период.", style={"color": COLORS["text_secondary"]})
@@ -210,7 +361,26 @@ def render_body(start_date, end_date):
             ),
         ])
 
-    # ── KPI-плитки со сравнением к предыдущему периоду той же длины ──────────
+    # ── E3: hero-ряд — две метрики, которые директору важно увидеть первыми ──
+    # (% решено и оценка оператора), крупнее и с тем же визуальным языком
+    # «полукруг + цветовой порог», что и раньше был только у «Решено».
+    # Остальные 4 KPI — вторым, более компактным рядом (как и раньше).
+    hero_row = html.Div(
+        [
+            gauge_tile(
+                "Оценка оператора", cur["agent"], good=7, warn=5,
+                max_value=10, unit="/10", decimals=1, size="lg",
+                delta=delta_badge(_delta(cur["agent"], prev["agent"]), up_is_good=True, decimals=1),
+            ),
+            gauge_tile(
+                "Решено", cur["resolved_pct"] if cur_df.shape[0] else None,
+                good=_RESOLVED_GOOD, warn=_RESOLVED_WARN, unit="%", size="lg",
+                delta=delta_badge(_delta(cur["resolved_pct"], prev["resolved_pct"]), unit="%", up_is_good=True, decimals=1),
+            ),
+        ],
+        style={"display": "flex", "gap": "1rem", "marginBottom": "1rem", "flexWrap": "wrap"},
+    )
+
     kpi_row = html.Div(
         [
             stat_tile(
@@ -218,21 +388,10 @@ def render_body(start_date, end_date):
                 delta=delta_badge(_delta(cur["count"], prev["count"]), up_is_good=None, decimals=0),
             ),
             stat_tile(
-                "Оценка оператора",
-                f"{cur['agent']:.1f}/10" if pd.notna(cur["agent"]) else "—",
-                accent=COLORS["kpi_agent"],
-                delta=delta_badge(_delta(cur["agent"], prev["agent"]), up_is_good=True, decimals=1),
-            ),
-            stat_tile(
                 "Удовл. клиента",
                 f"{cur['client']:.1f}/10" if pd.notna(cur["client"]) else "—",
                 accent=COLORS["kpi_client"],
                 delta=delta_badge(_delta(cur["client"], prev["client"]), up_is_good=True, decimals=1),
-            ),
-            gauge_tile(
-                "Решено", cur["resolved_pct"] if cur_df.shape[0] else None,
-                good=_RESOLVED_GOOD, warn=_RESOLVED_WARN,
-                delta=delta_badge(_delta(cur["resolved_pct"], prev["resolved_pct"]), unit="%", up_is_good=True, decimals=1),
             ),
             stat_tile(
                 "Эскалаций", str(cur["escalated"]), accent=COLORS["kpi_escalated"],
@@ -254,6 +413,14 @@ def render_body(start_date, end_date):
             f"Сравнение с предыдущим периодом ({prev_start.date()} — {prev_end.date()}, {len(prev_df)} звонков)",
             style={"color": COLORS["text_secondary"], "fontSize": "0.8rem", "marginBottom": "1.5rem"},
         )
+
+    alerts_row = _render_alerts(cur_df, cur, prev)
+
+    # ── E4: лидерборд за период — топ/анти-топ прямо на главном экране, ──────
+    # без перехода на отдельную страницу «Операторы». Требуем минимум 3
+    # звонка за период — иначе один удачный/неудачный звонок выталкивает
+    # оператора в топ или анти-топ без статистической значимости.
+    leaderboard_row = _leaderboard_card(cur_df)
 
     # ── E1: тренды по дням ────────────────────────────────────────────────────
     daily = cur_df.assign(day=cur_df["effective_dt"].dt.date).groupby("day").agg(
@@ -429,11 +596,14 @@ def render_body(start_date, end_date):
         className="ag-theme-alpine",
     )
 
-    body_children = [kpi_row]
+    body_children = [hero_row, kpi_row]
     if prev_label:
         body_children.append(prev_label)
     else:
         body_children.append(html.Div(style={"marginBottom": "1.5rem"}))
+    body_children.append(alerts_row)
+    if leaderboard_row is not None:
+        body_children.append(leaderboard_row)
     body_children += [trend_row, charts_row, _card([section_header(f"Звонки за период ({len(cur_df)})"), grid])]
 
     return html.Div(body_children)
