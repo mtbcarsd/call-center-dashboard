@@ -1,4 +1,4 @@
-"""Страница «Операторы» (D1.2, расширена в F1/F2).
+"""Страница «Операторы» (D1.2, расширена в F1-F4).
 
 Стиль вдохновлён dash-manufacture-spc-dashboard (Shewhart control charts):
 https://github.com/plotly/dash-sample-apps/tree/main/apps/dash-manufacture-spc-dashboard
@@ -6,25 +6,38 @@ https://github.com/plotly/dash-sample-apps/tree/main/apps/dash-manufacture-spc-d
 — это наш "% ниже нормы" (доля звонков оператора с низкой оценкой); их
 UCL/LCL (±3σ вокруг среднего процесса) — здесь «норма команды» (среднее ±1.5σ
 по всем именованным звонкам), но по качеству разговора, а не показанию
-датчика. dash_daq как зависимость не добавляли — GraduatedBar/Indicator
-собраны на своих html.Div под общую CSS-переменную темизацию (у dash_daq
-своя палитра, не подхватывающая наш data-theme).
+датчика. dash_daq как зависимость не добавляли — GraduatedBar/Indicator/
+LEDDisplay собраны на своих html.Div и уже существующих компонентах под
+общую CSS-переменную темизацию (у dash_daq своя палитра, не подхватывающая
+наш data-theme).
 
 F1 — построчный обзор с мини-трендом оценки (спарклайн) и градиентной шкалой
 позиции "% ниже нормы", вместо плоской ag-grid таблицы.
 F2 — клик по оператору раскрывает control chart: оценка каждого звонка по
 времени на фоне закрашенной полосы «норма команды», точки раскрашены по тем
 же порогам 7/5, что и everywhere else в проекте (score_dot).
+F3 — донат «% проблемных звонков по оператору» рядом со списком (аналог их
+"% OOC per Parameter").
+F4 — quick-stats шапка (операторов, средняя оценка команды, время
+обновления) + автообновление раз в 90 сек (тот же паттерн dcc.Interval, что
+и на странице Аналитика, E6) — выбранный оператор для drill-down не
+сбрасывается при обновлении, т.к. хранится в dcc.Store, а не в состоянии
+конкретных кнопок.
 """
+from datetime import datetime
+
 import dash
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 from dash import ALL, Input, Output, callback, ctx, dcc, html
 
 from dash_app.auth import get_current_department
 from dash_app.colors import COLORS, CHART_FONT
 from dash_app.components.cell_format import score_dot
+from dash_app.components.gauge_tile import gauge_tile
 from dash_app.components.page_header import page_header, section_header
+from dash_app.components.stat_tile import stat_tile
 from dash_app.data import load_calls
 
 dash.register_page(__name__, path="/operators", name="Операторы", order=1)
@@ -53,6 +66,14 @@ def _team_band(named_df: pd.DataFrame) -> tuple[float, float]:
     mean = named_df["agent_performance_score"].mean()
     std = named_df["agent_performance_score"].std() or 0.0
     return max(0.0, mean - _BAND_SIGMA * std), min(10.0, mean + _BAND_SIGMA * std)
+
+
+def _load_named(department) -> tuple[pd.DataFrame, int]:
+    df = load_calls(department=department)
+    named_df = df[df["operator_name"].notna() & (df["operator_name"] != "")].copy()
+    if not named_df.empty:
+        named_df["effective_dt"] = _effective_dt(named_df)
+    return named_df, len(df) - len(named_df)
 
 
 # ── F1: построчный список операторов со спарклайном и шкалой ─────────────────
@@ -151,14 +172,50 @@ def _operator_row(name: str, group: pd.DataFrame) -> html.Div:
     )
 
 
+# ── F3: донат «% проблемных звонков по оператору» ─────────────────────────────
+
+def _problem_donut(named_df: pd.DataFrame):
+    problem_df = named_df[named_df["agent_performance_score"] < _LOW_SCORE_THRESHOLD]
+    if problem_df.empty:
+        return html.P(
+            f"✅ Нет звонков с оценкой ниже {_LOW_SCORE_THRESHOLD}/10.",
+            style={"color": COLORS["success"], "fontWeight": "500"},
+        )
+    counts = problem_df.groupby("operator_name").size().sort_values(ascending=False)
+    fig = px.pie(values=counts.values, names=counts.index, hole=0.45)
+    fig.update_traces(marker=dict(colors=px.colors.qualitative.Set2))
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, font={**CHART_FONT, "size": 10}),
+        margin=dict(t=10, b=10, l=0, r=0), height=280,
+        paper_bgcolor="white", font=CHART_FONT,
+    )
+    return dcc.Graph(figure=fig, config={"displayModeBar": False})
+
+
+# ── F4: quick-stats шапка ─────────────────────────────────────────────────────
+
+def _quick_stats(named_df: pd.DataFrame) -> html.Div:
+    op_count = named_df["operator_name"].nunique()
+    team_avg = named_df["agent_performance_score"].mean()
+    now_label = datetime.now().strftime("%H:%M")
+
+    return html.Div(
+        [
+            stat_tile("Операторов", str(op_count), accent=COLORS["kpi_calls"]),
+            gauge_tile("Средняя оценка команды", team_avg, good=7, warn=5, max_value=10, unit="/10", decimals=1),
+            stat_tile("Обновлено", now_label, accent=COLORS["kpi_silence"]),
+        ],
+        style={"display": "flex", "gap": "1rem", "marginBottom": "1.5rem", "flexWrap": "wrap"},
+    )
+
+
 # ── F2: drill-down control chart ──────────────────────────────────────────────
 
 def _render_detail(name: str, department: str | None):
-    df = load_calls(department=department)
-    named_df = df[df["operator_name"].notna() & (df["operator_name"] != "")].copy()
+    named_df, _ = _load_named(department)
     if named_df.empty:
         return html.P("Нет данных.", style={"color": COLORS["text_secondary"]})
-    named_df["effective_dt"] = _effective_dt(named_df)
 
     band_low, band_high = _team_band(named_df)
     op_df = named_df[named_df["operator_name"] == name].sort_values("effective_dt")
@@ -207,13 +264,10 @@ def _render_detail(name: str, department: str | None):
     ])
 
 
-# ── layout() ───────────────────────────────────────────────────────────────
+# ── layout() — статичная оболочка, содержимое приходит из callback'ов ────────
 
 def layout():
-    df = load_calls(department=get_current_department())
-    named_df = df[df["operator_name"].notna() & (df["operator_name"] != "")].copy()
-    unnamed_count = len(df) - len(named_df)
-
+    named_df, unnamed_count = _load_named(get_current_department())
     if named_df.empty:
         return html.Div([
             page_header("🧑‍💼", "Операторы"),
@@ -224,34 +278,72 @@ def layout():
             ),
         ])
 
-    named_df["effective_dt"] = _effective_dt(named_df)
-    groups = sorted(named_df.groupby("operator_name"), key=lambda kv: -len(kv[1]))
-    rows = [_operator_row(name, group) for name, group in groups]
-
-    subtitle = f"{len(named_df)} из {len(df)} звонков привязаны к оператору"
-    if unnamed_count:
-        subtitle += f" · {unnamed_count} ещё без имени"
-
     return html.Div([
-        page_header("🧑‍💼", "Статистика по операторам", subtitle),
-        _card([_row_header(), html.Div(rows, id="operators-rows")]),
-        html.Div(
-            html.P(
-                "Выберите оператора выше, чтобы увидеть детальный график по его звонкам.",
-                style={"color": COLORS["text_secondary"]},
-            ),
-            id="operators-detail-container", style={"marginTop": "1.5rem"},
-        ),
+        page_header("🧑‍💼", "Статистика по операторам"),
+        html.Div(id="operators-body"),
+        dcc.Store(id="operators-selected-op"),
+        html.Div(id="operators-detail-container", style={"marginTop": "1.5rem"}),
+        dcc.Interval(id="operators-refresh-interval", interval=90_000, n_intervals=0),
     ])
 
 
 @callback(
-    Output("operators-detail-container", "children"),
+    Output("operators-body", "children"),
+    Input("operators-refresh-interval", "n_intervals"),
+)
+def render_body(_n_intervals):
+    named_df, unnamed_count = _load_named(get_current_department())
+    if named_df.empty:
+        return html.P(
+            "Пока ни один звонок не привязан к оператору.",
+            style={"color": COLORS["text_secondary"]},
+        )
+
+    groups = sorted(named_df.groupby("operator_name"), key=lambda kv: -len(kv[1]))
+    rows = [_operator_row(name, group) for name, group in groups]
+
+    subtitle = f"{len(named_df)} звонков привязаны к оператору"
+    if unnamed_count:
+        subtitle += f" · {unnamed_count} ещё без имени"
+
+    return html.Div([
+        _quick_stats(named_df),
+        html.Div(
+            [
+                _card(
+                    [_row_header(), html.Div(rows, id="operators-rows")],
+                    {"flex": "2.2", "minWidth": "480px"},
+                ),
+                _card(
+                    [section_header(f"% звонков с оценкой < {_LOW_SCORE_THRESHOLD}/10 — по операторам"), _problem_donut(named_df)],
+                    {"flex": "1", "minWidth": "260px"},
+                ),
+            ],
+            style={"display": "flex", "gap": "1rem", "flexWrap": "wrap", "alignItems": "flex-start"},
+        ),
+        html.P(subtitle, style={"color": COLORS["text_secondary"], "fontSize": "0.8rem", "marginTop": "0.75rem"}),
+    ])
+
+
+@callback(
+    Output("operators-selected-op", "data"),
     Input({"type": "operator-row-btn", "name": ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
-def show_operator_detail(n_clicks_all):
+def select_operator(n_clicks_all):
     triggered = ctx.triggered_id
     if not triggered or not any(n_clicks_all):
         return dash.no_update
-    return _render_detail(triggered["name"], get_current_department())
+    return triggered["name"]
+
+
+@callback(
+    Output("operators-detail-container", "children"),
+    Input("operators-selected-op", "data"),
+    Input("operators-refresh-interval", "n_intervals"),
+    prevent_initial_call=True,
+)
+def show_operator_detail(name, _n_intervals):
+    if not name:
+        return dash.no_update
+    return _render_detail(name, get_current_department())
