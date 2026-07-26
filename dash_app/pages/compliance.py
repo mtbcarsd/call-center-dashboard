@@ -18,6 +18,7 @@ score) именно за этот день+час; сверху — dropdown к�
 специально (executive и так видит сводку «По отделам» в других разделах).
 """
 from datetime import date, timedelta
+from urllib.parse import quote_plus
 
 import dash
 import pandas as pd
@@ -379,14 +380,16 @@ def render_by_operator(start_date, end_date):
     for operator, group in named_df.groupby("operator"):
         total = len(group)
         passed = int(group["passed"].sum())
-        op_rows.append({"Оператор": operator, "Звонков": total, "Без нарушений (%)": round(passed / total * 100, 1)})
+        # Markdown-ссылка на drill-down control chart (pages/operators.py, F2).
+        op_link = f"[{operator}](/operators?op={quote_plus(operator)})"
+        op_rows.append({"Оператор": op_link, "Звонков": total, "Без нарушений (%)": round(passed / total * 100, 1)})
     if not op_rows:
         return html.Div()
 
     grid = dag.AgGrid(
         rowData=op_rows,
         columnDefs=[
-            {"headerName": "Оператор", "field": "Оператор", "flex": 2},
+            {"headerName": "Оператор", "field": "Оператор", "flex": 2, "cellRenderer": "markdown"},
             {"headerName": "Звонков", "field": "Звонков", "flex": 1},
             {"headerName": "Без нарушений (%)", "field": "Без нарушений (%)", "flex": 1.5, **pct_cell(good=80, warn=60)},
         ],

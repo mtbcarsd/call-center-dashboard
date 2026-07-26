@@ -23,8 +23,17 @@ F4 — quick-stats шапка (операторов, средняя оценка
 и на странице Аналитика, E6) — выбранный оператор для drill-down не
 сбрасывается при обновлении, т.к. хранится в dcc.Store, а не в состоянии
 конкретных кнопок.
+
+Drill-in по имени оператора из других страниц: любая таблица с колонкой
+«Оператор» (rating.py, compliance.py «По операторам») рендерит имя как
+markdown-ссылку на `/operators?op=<имя>`. show_operator_detail() читает
+query-параметр из глобального dcc.Location(id="url") (объявлен один раз в
+app.py, общий для всех страниц) в дополнение к клику по строке — так один
+и тот же control chart открывается что по клику на этой странице, что по
+ссылке с другой, без дублирования рендер-логики.
 """
 from datetime import datetime
+from urllib.parse import parse_qs
 
 import dash
 import pandas as pd
@@ -266,7 +275,11 @@ def _render_detail(name: str, department: str | None):
 
 # ── layout() — статичная оболочка, содержимое приходит из callback'ов ────────
 
-def layout():
+def layout(**_query_params):
+    # dash.page_container передаёт query-параметры URL (?op=...) как kwargs
+    # в layout() — op нам тут не нужен (читаем его позже через
+    # Input("url", "search") в show_operator_detail), но сигнатура должна
+    # их принимать, иначе TypeError на любой ссылке вида /operators?op=...
     named_df, unnamed_count = _load_named(get_current_department())
     if named_df.empty:
         return html.Div([
@@ -340,10 +353,13 @@ def select_operator(n_clicks_all):
 @callback(
     Output("operators-detail-container", "children"),
     Input("operators-selected-op", "data"),
+    Input("url", "search"),
     Input("operators-refresh-interval", "n_intervals"),
-    prevent_initial_call=True,
 )
-def show_operator_detail(name, _n_intervals):
+def show_operator_detail(clicked_name, url_search, _n_intervals):
+    name = clicked_name
+    if not name and url_search:
+        name = (parse_qs(url_search.lstrip("?")).get("op") or [None])[0]
     if not name:
         return dash.no_update
     return _render_detail(name, get_current_department())

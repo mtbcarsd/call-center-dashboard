@@ -2,6 +2,8 @@
 
 Эквивалент вкладки «🏆 Рейтинг» (dashboard.py:700-767).
 """
+from urllib.parse import quote_plus
+
 import dash
 import pandas as pd
 import dash_ag_grid as dag
@@ -78,14 +80,18 @@ def layout():
             if not op_checklists:
                 continue
             rates = checklist_pass_rates(op_checklists)
-            row = {"Оператор": operator, "Звонков": len(group)}
+            # Markdown-ссылка на drill-down control chart (pages/operators.py,
+            # F2) — та же деталка, что открывается кликом на странице
+            # «Операторы», только со страницы «Рейтинг».
+            op_link = f"[{operator}](/operators?op={quote_plus(operator)})"
+            row = {"Оператор": op_link, "Звонков": len(group)}
             row.update({k: round(v or 0, 1) for k, v in rates.items()})
             op_rows.append(row)
 
         if op_rows:
             rate_labels = [item["label"] for item in CHECKLIST]
             op_col_defs = [
-                {"headerName": "Оператор", "field": "Оператор", "flex": 2},
+                {"headerName": "Оператор", "field": "Оператор", "flex": 2, "cellRenderer": "markdown"},
                 {"headerName": "Звонков", "field": "Звонков", "flex": 1},
             ]
             for label in rate_labels:
