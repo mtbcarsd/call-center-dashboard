@@ -9,6 +9,7 @@ def stat_tile(
     value: str,
     subtitle: str = None,
     accent: str = COLORS["primary_bright"],
+    delta=None,
 ) -> html.Div:
     children = [
         html.P(
@@ -22,16 +23,22 @@ def stat_tile(
                 "margin": "0 0 0.5rem 0",
             },
         ),
-        html.P(
-            value,
-            style={
-                "fontSize": "1.875rem",
-                "fontWeight": "700",
-                "color": COLORS["text_primary"],
-                "lineHeight": "1",
-                "margin": "0",
-                "fontVariantNumeric": "tabular-nums",
-            },
+        html.Div(
+            [
+                html.P(
+                    value,
+                    style={
+                        "fontSize": "1.875rem",
+                        "fontWeight": "700",
+                        "color": COLORS["text_primary"],
+                        "lineHeight": "1",
+                        "margin": "0",
+                        "fontVariantNumeric": "tabular-nums",
+                    },
+                ),
+                *([delta] if delta is not None else []),
+            ],
+            style={"display": "flex", "alignItems": "baseline", "flexWrap": "wrap"},
         ),
     ]
     if subtitle:
