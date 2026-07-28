@@ -306,9 +306,14 @@ Streamlit-версией, включая вкладку «Звонки» (пле
 [SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md](SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md) и
 [COMPETITOR_VIDEOS_ANALYSIS.md](COMPETITOR_VIDEOS_ANALYSIS.md).
 
-📖 **Подробная документация (Jupyter Book)** — запланирована, ещё не начата.
-Архитектура, паттерны, БД, API и деплой подробнее, чем в этом README —
-план по сессиям в [JUPYTER_BOOK_DOCS_PLAN.md](JUPYTER_BOOK_DOCS_PLAN.md).
+📖 **Подробная документация (Jupyter Book)** — готова (`docs/`, сессии J1-J8
+завершены 2026-07-28). Архитектура, пайплайн анализа, БД, REST API,
+Dash-дашборд (все страницы/компоненты/паттерны разработки), деплой,
+тестирование и история решений — подробнее, чем в этом README. Собрать
+локально: `pip install -r requirements-docs.txt && cd docs && jupyter-book
+build --html` (пока без публичного хостинга — статический сайт в
+`docs/_build/html/`). План и статус по сессиям —
+[JUPYTER_BOOK_DOCS_PLAN.md](JUPYTER_BOOK_DOCS_PLAN.md).
 
 ✅ **Миграция дашборда со Streamlit на Plotly Dash + три ролевых дашборда**
 (директор / начальник отдела / сотрудник с рекомендациями по обучению) —

@@ -155,6 +155,7 @@ unexpected keyword argument` на переходе вида `/operators?op=...` 
 `/operators`, что и клик по строке на самой странице, без дублирования
 рендер-логики (`_render_detail()` вызывается из обоих путей).
 
+(clientside-callback-pattern)=
 ### `clientside_callback` там, где Python не может управлять DOM напрямую
 
 Единственные два места в проекте: перемотка `<audio>` по клику на реплику
