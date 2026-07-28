@@ -6,6 +6,7 @@ REST API и — надстройкой над всем этим — Dash-даш�
 посчитанные Postgres-данные и дополнительно дёргает API за LLM-функциями
 (тренды, коучинг).
 
+(component-diagram)=
 ## Компонентная схема
 
 ```{mermaid}
@@ -50,6 +51,7 @@ flowchart TB
     W -.->|"не работает,<br/>см. Деплой"| OWUI["OpenWebUI"]
 ```
 
+(supervisor-vs-langgraph)=
 ## Почему Supervisor, а не LangGraph
 
 Все 4 агента (`classifier`, `quality`, `compliance`, `summarizer`) независимы
@@ -65,6 +67,7 @@ flowchart TB
 (`pipeline.py`, `webui_pipeline.py`, `api/main.py`) — одна точка правды для
 логики анализа звонка, а не три копии.
 
+(ollama-openai-client)=
 ## Почему Ollama + OpenAI-совместимый клиент
 
 `agents/base.py` — общая база агентов: вызов LLM через `openai` Python SDK
@@ -81,6 +84,7 @@ flowchart TB
 [Деплой и инфраструктура](deployment.md)), когда локальный Ollama на CPU/RAM
 Trial-плана оказался не вариантом.
 
+(three-facades)=
 ## Три фасада поверх общего слоя
 
 Каждый фасад решает свою задачу интеграции, но не дублирует логику анализа:
@@ -114,6 +118,7 @@ Dash-дашбордом), `WS /transcribe/stream` (реализован, в UI �
 `multipart/form-data`-формы, а не альтернативные Content-Type на одной ручке:
 FastAPI не умеет смешивать JSON-body и `File` в одном эндпоинте.
 
+(dash-as-consumer)=
 ## Dash-дашборд как потребитель
 
 В отличие от трёх фасадов выше (которые производят анализ), `dash_app/`
@@ -125,6 +130,7 @@ FastAPI не умеет смешивать JSON-body и `File` в одном э�
 `/me`/`/help`/`/login`/`/logout`, остальные пути редиректят. Подробности
 структуры страниц — в [Dash-дашборд](dashboard.md).
 
+(repo-map)=
 ## Карта репозитория
 
 ```
