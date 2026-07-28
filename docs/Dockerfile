@@ -9,7 +9,11 @@ WORKDIR /app
 # изолированный Node сам, но в неинтерактивной сборке зависает на вопросе
 # "Install Node.js? (y/N)" (нет stdin) — поэтому ставим системный Node явно,
 # nodeenv находит его и ничего сам не устанавливает.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+# procps (ps) нужен по той же причине: после статического экспорта сайта
+# mystmd останавливает свой временный dev-сервер через `ps`, которого нет
+# в минимальном python:3.12-slim — без него сборка падает уже ПОСЛЕ того,
+# как сайт полностью собран (Error: spawn ps ENOENT).
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg procps \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
