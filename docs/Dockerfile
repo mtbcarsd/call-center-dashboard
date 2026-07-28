@@ -5,13 +5,20 @@ FROM python:3.12-slim AS build
 
 WORKDIR /app
 
+# jupyter-book (mystmd) требует Node >= 18. nodeenv умеет поставить свой
+# изолированный Node сам, но в неинтерактивной сборке зависает на вопросе
+# "Install Node.js? (y/N)" (нет stdin) — поэтому ставим системный Node явно,
+# nodeenv находит его и ничего сам не устанавливает.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements-docs.txt .
 RUN pip install --no-cache-dir -r requirements-docs.txt
 
 COPY docs/ ./docs/
 WORKDIR /app/docs
-# jupyter-book (mystmd) ставит собственный изолированный Node через nodeenv —
-# системный Node/npm не нужен.
 RUN jupyter-book build --html
 
 FROM python:3.12-slim
