@@ -294,6 +294,7 @@ Streamlit-версией, включая вкладку «Звонки» (пле
 | `call-audio` (Bucket) | ✅ работает | Аудио для плеера, S3-совместимо |
 | `api` (FastAPI) | ✅ работает | После апгрейда на Hobby-план (2026-07-18) — деплоится чисто, без OOM. `GET /trends` и `GET /coaching/{operator_name}` проверены end-to-end (Groq) |
 | `pipelines` (webui_pipeline) | ❌ не работает | НЕ из-за RAM — `ghcr.io/open-webui/pipelines:main` несёт несовместимый набор torch/torchvision/torchaudio. Частично почищено (см. `pipelines/Dockerfile`), но осталось необъяснённое расхождение build/runtime — см. NEXT_SESSION.md |
+| `docs` (Jupyter Book) | ✅ работает | Статический сайт документации (`docs/Dockerfile`), задеплоен 2026-07-28 — https://docs-production-f5b7.up.railway.app |
 
 Апгрейд на Railway Hobby-план (2026-07-18) снял RAM-ограничение — `api` и `GET
 /trends` полностью рабочие в облаке. Оставшийся блокер чата — отдельная проблема
@@ -306,13 +307,16 @@ Streamlit-версией, включая вкладку «Звонки» (пле
 [SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md](SPEECH_ANALYTICS_IMPROVEMENT_PLAN.md) и
 [COMPETITOR_VIDEOS_ANALYSIS.md](COMPETITOR_VIDEOS_ANALYSIS.md).
 
-📖 **Подробная документация (Jupyter Book)** — готова (`docs/`, сессии J1-J8
-завершены 2026-07-28). Архитектура, пайплайн анализа, БД, REST API,
-Dash-дашборд (все страницы/компоненты/паттерны разработки), деплой,
-тестирование и история решений — подробнее, чем в этом README. Собрать
-локально: `pip install -r requirements-docs.txt && cd docs && jupyter-book
-build --html` (пока без публичного хостинга — статический сайт в
-`docs/_build/html/`). План и статус по сессиям —
+📖 **Подробная документация (Jupyter Book)** — готова и задеплоена
+(сессии J1-J8 завершены 2026-07-28): **https://docs-production-f5b7.up.railway.app**.
+Архитектура, пайплайн анализа, БД, REST API, Dash-дашборд (все страницы/
+компоненты/паттерны разработки), деплой, тестирование и история решений —
+подробнее, чем в этом README. Отдельный сервис `docs` на Railway
+(`docs/Dockerfile`, статический экспорт `jupyter-book build --html`,
+раздаётся `python -m http.server`) — деплоится автоматически при пуше в
+`main`, как и остальные сервисы. Собрать локально: `pip install -r
+requirements-docs.txt && cd docs && jupyter-book build --html`. План и
+статус по сессиям —
 [JUPYTER_BOOK_DOCS_PLAN.md](JUPYTER_BOOK_DOCS_PLAN.md).
 
 ✅ **Миграция дашборда со Streamlit на Plotly Dash + три ролевых дашборда**
