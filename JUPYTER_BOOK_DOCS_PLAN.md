@@ -174,14 +174,19 @@ CLI: `jupyter-book build` (контент), `jupyter-book build --html` (ста�
   датоподобных строковых осях, защита данных внутри каждого save-колбэка
   (`_file_in_scope()`), не только на входе в страницу
 
-### J7 — Деплой и инфраструктура
+### J7 — Деплой и инфраструктура ✅ (2026-07-28)
 - `docs/deployment.md`: сервисы Railway (`dash-director`, легаси
   `call-center-dashboard`, `api`, `pipelines`, `openwebui`, Postgres, Bucket) —
-  что за что отвечает, статус каждого
-- Docker Compose локально, переменные окружения (свести таблицу из README + то,
-  чего там нет)
-- Известные грабли: непинованные версии → сегфолт (`pyarrow`), несовместимость
-  torch/torchvision в `pipelines`, `railway ssh` только через heredoc-скрипт
+  что за что отвечает, статус каждого, свой Dockerfile на сервис
+- Docker Compose локально, полная таблица переменных окружения из
+  `.env.example` (9 групп, включая те, которых не было в README)
+- 4 известные грабли разобраны подробно (не одной строкой): сегфолт
+  `pyarrow` (непинованные версии), несовместимость torch/torchvision/
+  torchaudio в `pipelines` (с полным разбором уже применённого фикса в
+  `pipelines/Dockerfile` — smoke-тесты на build-время — и честным указанием,
+  что расхождение build/runtime всё ещё не объяснено), исторический баг
+  `railway.toml`, перезаписывающего `startCommand` всем сервисам разом,
+  `railway ssh` только через heredoc-скрипт
 
 ### J8 — Тестирование, история и финал
 - `docs/testing.md`: структура `tests/`, подход к тестированию Dash-callback'ов,
