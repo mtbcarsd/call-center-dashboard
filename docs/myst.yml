@@ -1,0 +1,29 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: edc8c5bc-b629-4d2e-9678-eefa7fded194
+  title: Call Center Analytics
+  description: >-
+    Подробная документация: архитектура пайплайна речевой аналитики,
+    Dash-дашборд, REST API, база данных и деплой на Railway.
+  keywords: [call-center, speech-analytics, dash, fastapi, postgres]
+  # authors: []
+  github: https://github.com/mtbcarsd/call-center-dashboard
+  toc:
+    - file: index.md
+    - file: architecture.md
+    - file: pipeline.md
+    - file: database.md
+    - file: api.md
+    - file: dashboard.md
+    - file: scripts.md
+    - file: deployment.md
+    - file: testing.md
+    - file: history.md
+site:
+  template: book-theme
+  options:
+    logo_text: Call Center Analytics
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png
