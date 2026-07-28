@@ -71,6 +71,7 @@ collection_id)`, FK на справочник). `comments` — простая т
 `id`/`file_name`/`author`/`text`/`created_at`, без промежуточной таблицы (один
 звонок → много комментариев, не many-to-many).
 
+(users-table)=
 ### `users` — роли и доступ
 
 ```sql

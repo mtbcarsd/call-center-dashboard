@@ -140,13 +140,17 @@ CLI: `jupyter-book build` (контент), `jupyter-book build --html` (ста�
   ссылкой на git log/память — не пересказывать инцидент подробно, это не архитектура,
   а история
 
-### J5 — REST API и скрипты
-- `docs/api.md`: эндпоинты `api/main.py` (`POST /analyze`, `GET /trends`,
-  `GET /coaching/{operator_name}`, `WS /transcribe/stream`) — запрос/ответ,
-  где используется каждый (Dash-дашборд, WS пока нигде)
-- `docs/scripts.md`: `scripts/*.py` — когда каким пользоваться, явно зафиксировать
-  паттерн «новые звонки — отдельный INSERT-only скрипт, не `pipeline.py`»
-  (`pipeline.py` делает `DELETE FROM call_analysis` + пересчёт всего)
+### J5 — REST API и скрипты ✅ (2026-07-28)
+- `docs/api.md`: все 5 эндпоинтов `api/main.py` (`GET /health`, `POST
+  /analyze`, `GET /trends`, `GET /coaching/{operator_name}`, `WS
+  /transcribe/stream`) — запрос/ответ с примерами, где используется каждый
+- `docs/scripts.md`: все 6 скриптов `scripts/*.py` разобраны по отдельности
+  (`seed_users`, `generate_synthetic_calls`, `compute_wer`, `add_new_calls`,
+  `fix_new_calls_analysis`, `generate_synthetic_metrics_calls`) — когда каким
+  пользоваться, зафиксирован паттерн «новые звонки — отдельный INSERT-only
+  скрипт, не `pipeline.py`» вынесен отдельным разделом в начало страницы
+- Добавлен ещё один явный MyST-якорь (`users-table` в `database.md`) для
+  ссылки из `scripts.md` — та же нестабильность автослагов, что в J3
 
 ### J6 — Dash-дашборд
 - `docs/dashboard.md`: все страницы `dash_app/pages/` — что показывают, кому видны
