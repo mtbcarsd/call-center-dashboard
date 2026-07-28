@@ -152,17 +152,27 @@ CLI: `jupyter-book build` (контент), `jupyter-book build --html` (ста�
 - Добавлен ещё один явный MyST-якорь (`users-table` в `database.md`) для
   ссылки из `scripts.md` — та же нестабильность автослагов, что в J3
 
-### J6 — Dash-дашборд
-- `docs/dashboard.md`: все страницы `dash_app/pages/` — что показывают, кому видны
-  (executive/manager/employee route guard), ссылки между страницами (drill-in
-  `?op=<имя>`)
-- Компоненты `dash_app/components/` — переиспользуемые строительные блоки
-  (`gauge_tile`, `stat_tile`, `delta_badge`, `page_header`, `cell_format`)
-- Паттерны разработки: `layout()` + `@callback` для перерисовки без потери
-  состояния, `dcc.Store` вместо чтения состояния кнопок напрямую, осторожность с
-  pattern-matching id (float vs строка), светлая/тёмная тема через CSS custom
-  properties — это то, что нужно новому человеку/будущей сессии, чтобы не
-  наступить на уже известные грабли
+### J6 — Dash-дашборд ✅ (2026-07-28)
+- `docs/dashboard.md`: все 9 страниц `dash_app/pages/` в таблице — путь, кому
+  видна, что показывает; аутентификация через Flask session (не встроенный
+  механизм Dash), route guard (`_require_login`, `_EMPLOYEE_ALLOWED_PATHS`) и
+  явное предупреждение, что guard защищает доступ к странице, но не сами
+  данные — это отдельный department/operator_match_name-скоуп на уровне
+  `load_calls()`
+- Компоненты `dash_app/components/` — все 5 разобраны (`gauge_tile` с
+  `max_value`/`unit`/`size="lg"` для hero-ряда, `stat_tile`, `delta_badge` с
+  явным `up_is_good`, `page_header`/`section_header`, `cell_format` —
+  `pct_cell`/`score_cell`/`score_dot`)
+- 8 паттернов разработки вынесены отдельными подразделами (не одним общим
+  абзацем): `layout()`+`@callback`, `dcc.Store` вместо состояния кнопок,
+  pattern-matching id (строка, не float — реальный пойманный баг
+  `calls_logic.py`/`time_cs`), `layout(**_query_params)` для query-string
+  страниц, markdown-ссылки для drill-in между страницами,
+  `clientside_callback` (только 2 места в проекте — аудиоплеер и тема),
+  промежуточный `dcc.Store` вместо прямого `clickData` того же графика
+  (реальный Plotly.js-баг на Compliance-heatmap), явный `type="category"` на
+  датоподобных строковых осях, защита данных внутри каждого save-колбэка
+  (`_file_in_scope()`), не только на входе в страницу
 
 ### J7 — Деплой и инфраструктура
 - `docs/deployment.md`: сервисы Railway (`dash-director`, легаси
