@@ -127,12 +127,15 @@ CLI: `jupyter-book build` (контент), `jupyter-book build --html` (ста�
   накопленные ручные правки; явно отмечено в тексте со ссылкой вперёд на
   `scripts.md` (J5)
 
-### J4 — База данных и хранилище
-- `docs/database.md`: полная схема `db.py` (все таблицы — `call_analysis`,
-  `call_segments`, `users`, `tags`/`call_tags`, `collections`/`call_collections`,
-  `comments`), какие поля nullable, где сознательно нет FK (`operator_name` —
-  свободный текст) и почему
-- `storage.py` — Railway Bucket, presigned URL для плеера
+### J4 — База данных и хранилище ✅ (2026-07-28)
+- `docs/database.md`: полная схема `db.py` (все таблицы — `ai_transcribed_calls`,
+  `call_analysis` с разбивкой на базовые/миграционные колонки, `call_segments`,
+  `tags`/`call_tags`, `collections`/`call_collections`, `comments`, `users` с
+  реальными значениями ролей `executive`/`manager`/`employee`), какие поля
+  nullable, где сознательно нет FK (`operator_name`) и почему — со ссылкой на
+  то, как `operator_match_name` в `users` используется route guard'ом
+- `storage.py` — Railway Bucket, presigned URL, явно описан режим graceful
+  degradation без `AWS_*` переменных (не падает, просто нет плеера)
 - Краткая историческая справка (Snowflake → SQLite → Postgres) одним абзацем со
   ссылкой на git log/память — не пересказывать инцидент подробно, это не архитектура,
   а история
